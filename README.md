@@ -82,6 +82,8 @@ npm run build
 
 Lint 使用 **Oxlint**，规则在 [.oxlintrc.json](.oxlintrc.json) 中配置；`npm run lint` 检查源码与测试，警告也会使检查失败。可用 `npm run lint:fix` 自动修复支持的规则。`npm run check` 独立运行 TypeScript 严格类型检查。
 
+项目结构、结构性同步规则、Git 提交规范和提交检查点见 [AGENTS.md](AGENTS.md)。
+
 测试覆盖 Pi 拦截、dsh 请求转换及原生审批流程，以及决策阈值、故障回退、取消和参数变化。Jev API 响应使用模拟数据；这些测试不能证明模型的实际分类质量。
 
 根据 [TypeSafe 模型文档](https://docs.typesafe.ai/models)（2026-10-09），Jev 1.13 输入价格为 **$0.042 / 百万 token**，输出免费。每次若消耗 2000 输入 token，约 $0.000084；10 万次约 $8.40。这是按文档价格计算的估算，未实测成本、延迟或相对其他模型的降幅。
