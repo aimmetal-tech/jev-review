@@ -1,10 +1,20 @@
 # jev-review：DeepSeek Harness（DSH）适配器
 
-适配当前最新预览版 `dsh@0.2.1-alpha.2`，也在 npm 默认版 `0.2.0-rc.2` 上验证了打包插件的原生工具与审批流程。开发依赖固定版本，避免开发预览期接口变动使测试悄悄换目标。
+已验证 `dsh@0.2.1-alpha.2` 与 `0.2.0-rc.2` 的原生工具与审批流程。开发依赖固定版本，避免开发预览期接口变动使测试悄悄换目标。
 
 ## 安装与启用
 
-在此项目根目录生成可供 dsh 加载的 JavaScript：
+发布到 npm 后，推荐按版本安装预构建包：
+
+```bash
+export TYPESAFE_API_KEY='your-key'
+npx @deepseek-ai/dsh@0.2.1-alpha.2 plugin --profile web add jev-review@0.0.1
+npx @deepseek-ai/dsh@0.2.1-alpha.2 web
+```
+
+npm 发布状态见 [npm 包页面](https://www.npmjs.com/package/jev-review)。也可以下载 [GitHub Release](https://github.com/aimmetal-tech/jev-review/releases) 的预构建 `.tgz`；校验、解压与依赖安装见 [发布说明](../docs/RELEASING.md)。这两种安装方式无需手动构建。
+
+从源码安装时，在项目根目录生成可供 dsh 加载的 JavaScript：
 
 ```bash
 npm ci --ignore-scripts
@@ -15,8 +25,8 @@ npm run build
 
 ```bash
 export TYPESAFE_API_KEY='your-key'
-npx @deepseek-ai/dsh@alpha plugin --profile web add /absolute/path/to/jev-review
-npx @deepseek-ai/dsh@alpha web
+npx @deepseek-ai/dsh@0.2.1-alpha.2 plugin --profile web add /absolute/path/to/jev-review
+npx @deepseek-ai/dsh@0.2.1-alpha.2 web
 ```
 
 已安装 dsh 的环境可直接使用 `dsh plugin --profile web add ...` 和 `dsh web`。Bundle 同时声明原生 `auto-review` 行和 `jev-auto-review` 适配行，**安装不会替用户切换会话权限**。在当前会话选择 Auto review，或使用原生 `/permission auto`，才会开始审查工具调用。已有安装更新本地包后应重启 dsh，以加载新的 JavaScript 模块。
@@ -76,11 +86,12 @@ npm run lint
 npm test
 npm run build
 npm pack --ignore-scripts
+npm run check:package
 ```
 
 测试除了请求/响应转换，也加载实际发布的 Cordis、原生 Auto review、Session、Tools 和 Approval 服务，用不会执行 shell 的 probe 工具验证：Jev 允许后才执行工具；拒绝时只在原生一次性批准后执行；`never`、无审批渠道和 API 故障不会执行工具；PTC 内部调用使用绑定的 schema 审查。
 
-当前 47 项测试通过，包括 5 项真实 dsh 原生审批链路测试；这 5 项也使用打包插件在 `0.2.0-rc.2` 的独立依赖环境通过。测试使用模拟的 Jev API，未验证真实模型分类质量、实际延迟或成本。初始阈值需要用自己的操作样本评估，尤其是中文授权和对抗性内容。插件中文/英文元数据和 SVG 图标随包提供，实际 Web 页面呈现仍需在目标环境确认。
+测试包含 5 项真实 dsh 原生审批链路测试；这 5 项也曾使用打包插件在 `0.2.0-rc.2` 的独立依赖环境通过。`check:package` 会对本轮实际 tarball 再执行 Pi 加载与固定开发版本 DSH 的原生链路验证。测试使用模拟的 Jev API，未验证真实模型分类质量、实际延迟或成本。初始阈值需要用自己的操作样本评估，尤其是中文授权和对抗性内容。插件中文/英文元数据和 SVG 图标随包提供，实际 Web 页面呈现仍需在目标环境确认。
 
 ## 兼容与边界
 

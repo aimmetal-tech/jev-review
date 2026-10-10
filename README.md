@@ -12,14 +12,17 @@ Pi 入口可由 Pi 直接加载，无运行时第三方依赖。需要 Node.js �
 
 ```bash
 export TYPESAFE_API_KEY='your-key'
-pi -e /absolute/path/to/jev-review/src/index.ts
+pi install npm:jev-review@0.0.1
 ```
 
-也可以安装成 Pi 包：
+上面的 npm 命令适用于该版本已发布之后；实际状态见 [npm 包页面](https://www.npmjs.com/package/jev-review)。也可从 [GitHub Releases](https://github.com/aimmetal-tech/jev-review/releases) 下载预构建 `.tgz`，或克隆源码，使用本地包：
 
 ```bash
 pi install /absolute/path/to/jev-review
+pi -e /absolute/path/to/jev-review/src/index.ts
 ```
+
+第一条命令持久安装，第二条只在本次 Pi 启动时加载。Release 附件已包含 DSH 构建产物；下载、校验、DSH 安装及维护者发布步骤见 [发布说明](docs/RELEASING.md)。版本变更见 [更新日志](CHANGELOG.md)。
 
 安装后重新启动 Pi，或在现有会话执行 `/reload`。扩展类型检查使用 `@earendil-works/pi-coding-agent` 1.1.0；类型导入会被擦除。旧版 `@mariozechner/pi-coding-agent` 的相同核心接口可用，但需要在目标版本上验证。
 
@@ -70,19 +73,17 @@ Jev 的 confidence 由概率分布推导，不是独立的正确率保证。概�
 
 无效配置会保留拦截器并阻止操作，不会退化成自动放行。不自动重试失败请求，避免在执行路径上长时间等待。API 重定向被拒绝，响应限制为 64 KiB，取消请求不会继续询问用户。并发人工确认弹窗串行显示。
 
-## 验证与成本
+## 开发验证与成本
 
 ```bash
 npm ci --ignore-scripts
-npm run lint
-npm run check
-npm test
-npm run build
+npm run verify
+npm run check:package
 ```
 
-Lint 使用 **Oxlint**，规则在 [.oxlintrc.json](.oxlintrc.json) 中配置；`npm run lint` 检查源码与测试，警告也会使检查失败。可用 `npm run lint:fix` 自动修复支持的规则。`npm run check` 独立运行 TypeScript 严格类型检查。
+以上命令在源码仓库运行。`verify` 依次执行 Oxlint、TypeScript 严格类型检查和测试。Lint 规则在仓库 [.oxlintrc.json](https://github.com/aimmetal-tech/jev-review/blob/main/.oxlintrc.json) 中配置；`npm run lint` 检查源码、测试与发布脚本，警告也会使检查失败。可用 `npm run lint:fix` 自动修复支持的规则。
 
-项目结构、结构性同步规则、Git 提交规范和提交检查点见 [AGENTS.md](AGENTS.md)。
+`check:package` 通过 `prepack` 自动构建，生成 `.release/` 下的 tarball 和 SHA-256 校验文件，并在干净目录安装发布包，验证 Pi 加载器与 DSH 原生审批链路。它需要 npm registry 网络访问。项目结构、结构性同步规则、Git 提交规范和提交检查点见 [AGENTS.md](https://github.com/aimmetal-tech/jev-review/blob/main/AGENTS.md)。
 
 测试覆盖 Pi 拦截、dsh 请求转换及原生审批流程，以及决策阈值、故障回退、取消和参数变化。Jev API 响应使用模拟数据；这些测试不能证明模型的实际分类质量。
 

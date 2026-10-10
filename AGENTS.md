@@ -28,6 +28,7 @@ Jev 接口使用结构化 Choice 决策，同一次请求评估授权和风险�
 | 测试 | `node:test` 与 `node:assert/strict`，Node.js 类型擦除；Jev 请求使用模拟响应 |
 | 构建 | esbuild，仅将 DSH 入口打包为 ESM；第三方包保持 external |
 | 包分发 | `package.json` 的 `pi.extensions`、`exports`、`files` 与 `dsh.bundle.patch` |
+| 发布 | GitHub Actions CI/Release、npm 公开包与 provenance；支持 NPM_TOKEN 和配置后的 OIDC |
 
 依赖版本和兼容范围以 `package.json`、`package-lock.json` 为准。Pi 入口应保持无运行时第三方依赖，不得间接导入 DSH 的运行时依赖。
 
@@ -38,11 +39,22 @@ jev-review/
 |-- AGENTS.md                   # 开发约定与结构同步规则
 |-- README.md                   # 项目概要、Pi 使用、共用配置与边界
 |-- LICENSE                     # MIT 许可证
+|-- CHANGELOG.md                # 按版本维护的发布说明
 |-- package.json                # 包身份、脚本、依赖与宿主入口
 |-- package-lock.json           # npm 依赖锁文件
 |-- tsconfig.json               # TypeScript 严格类型检查
 |-- .oxlintrc.json              # Oxlint 规则
 |-- .gitignore                  # 依赖、构建和打包产物的忽略规则
+|-- .github/
+|   `-- workflows/
+|       |-- ci.yml              # Node.js 版本矩阵与发布包安装验证
+|       `-- release.yml         # tag 校验、GitHub Release 与 npm 发布
+|-- docs/
+|   `-- RELEASING.md            # 发布身份、版本流程和预构建安装
+|-- scripts/
+|   |-- release-info.ts         # tag/更新日志校验与 npm 重试检查
+|   |-- check-package.ts        # 构建、打包、校验文件和隔离安装
+|   `-- package-smoke.ts        # 已安装包的 Pi 加载与 DSH 导出验证
 |-- src/
 |   |-- reviewer.ts             # Jev 客户端、授权/风险规则、配置与判定
 |   |-- index.ts                # Pi 工具拦截、人工审批与 /jev 命令
@@ -58,12 +70,13 @@ jev-review/
 |   |-- reviewer.test.ts        # 配置、判定、上下文、路径与 API 故障回退
 |   |-- extension.test.ts       # Pi 事件、交互、取消与参数变化
 |   |-- dsh.test.ts             # DSH 协议转换与 Cordis middleware
-|   `-- dsh-native.test.ts      # 真实 DSH 服务的原生审批链路
+|   |-- dsh-native.test.ts      # 真实 DSH 服务的原生审批链路
+|   `-- release.test.ts         # 发布身份、版本、说明与重复发布保护
 `-- dist/                      # 构建生成，不纳入 Git
     `-- dsh.js                  # jev-review/dsh 导出，随 npm 包分发
 ```
 
-`node_modules/`、`*.tgz` 和其他被忽略的本地产物不属于受版本管理的项目结构。`dist/dsh.js` 虽不提交 Git，但必须在打包前构建，并由 `package.json.files` 纳入分发包。
+`node_modules/`、`*.tgz`、`.release/` 和其他被忽略的本地产物不属于受版本管理的项目结构。`dist/dsh.js` 虽不提交 Git，但必须在打包前构建，并由 `package.json.files` 纳入分发包。`prepack` 自动构建 DSH，发布工作流发布经过验证的同一份 tarball。
 
 ## 结构性同步规则
 
@@ -81,6 +94,7 @@ jev-review/
 | DSH 标题、描述、图标或导出变化 | 对齐 `dsh/locale/en.json` 与 `zh.json` 的语义；检查 `icon.svg`、`package.json.icon`、资源 `exports`、`files` 与 bundle patch。 |
 | 依赖、运行版本、Lint/类型检查/构建脚本变化 | 使用 npm 更新并提交 `package-lock.json`；同步 `package.json`、相应工具配置、两个 README 中相关命令及本文件的技术栈/检查点。保持 `engines` 与实际使用的 API 相容。 |
 | 新增、删除或重命名测试文件 | 同步 `package.json.scripts.test`，避免测试未被执行；更新本文件的结构树与覆盖说明，以及文档中引用的测试数量或覆盖范围。 |
+| 版本号、发布身份、CI 或发布流程变化 | 使用 npm 同步 `package.json` 和锁文件，维护 `CHANGELOG.md` 对应版本的说明；同步 `.github/workflows/`、`scripts/`、`test/release.test.ts`、`docs/RELEASING.md` 及两个 README 的安装说明。本文件的结构树、技术栈和检查点一并检查。tag 必须等于 `v<package.json.version>`；不得移动已发布 tag。 |
 
 补充约定：
 
@@ -116,9 +130,12 @@ npm run build
 
 ```bash
 npm pack --ignore-scripts --dry-run
+npm run check:package
 ```
 
 提交前检查 `git status --short`、`git diff` 和 `git diff --cached`：仅暂存本轮文件，不混入他人的改动、凭据、依赖目录或构建/打包产物。验证失败时先修复，再提交；若环境使必要检查无法执行，明确记录阻塞和未验证项，不得声称闭环已通过。
+
+`check:package` 需要 npm 网络访问，并生成被忽略的 `.release/` 产物。发布相关修改还应校验工作流语法与 `release:info`。具体发布配置和操作以 `docs/RELEASING.md` 为准。
 
 检查通过且暂存内容符合本轮目标后，立即创建提交。提交后的修改如果影响已验证行为，应补做受影响的检查并形成下一轮提交。推送到 GitHub 按用户已授权的任务范围执行；本地提交或推送不等同于 npm 发布、Release 或部署授权。
 

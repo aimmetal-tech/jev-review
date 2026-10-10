@@ -1,0 +1,127 @@
+name: Release
+
+on:
+  push:
+    tags: [v*]
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: Existing version tag (v<package.json version>)
+        required: true
+        type: string
+      publish_npm:
+        description: Publish to npm (disable to create only a GitHub Release)
+        type: boolean
+        default: true
+
+permissions:
+  contents: read
+
+concurrency:
+  group: release-${{ inputs.tag || github.ref_name }}
+  cancel-in-progress: false
+
+env:
+  RELEASE_TAG: ${{ inputs.tag || github.ref_name }}
+
+jobs:
+  prepare:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    outputs:
+      version: ${{ steps.info.outputs.version }}
+      filename: ${{ steps.info.outputs.filename }}
+      npm_tag: ${{ steps.info.outputs.npm_tag }}
+      prerelease: ${{ steps.info.outputs.prerelease }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ inputs.tag || github.ref }}
+          persist-credentials: false
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: 24
+          cache: npm
+      - run: npm ci --ignore-scripts
+      - name: Verify version tag and release notes
+        id: info
+        run: npm run release:info
+      - run: npm run verify
+      - run: npm run check:package
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: release-package
+          path: |
+            .release/*.tgz
+            .release/SHA256SUMS
+            .release/notes.md
+          if-no-files-found: error
+          include-hidden-files: true
+          retention-days: 14
+
+  github-release:
+    needs: prepare
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: release-package
+          path: .release
+      - name: Verify archive checksum
+        run: cd .release && sha256sum --check SHA256SUMS
+      - name: Create GitHub Release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          ARCHIVE: ${{ needs.prepare.outputs.filename }}
+          PRERELEASE: ${{ needs.prepare.outputs.prerelease }}
+        run: |
+          if gh release view "$RELEASE_TAG" > /dev/null 2>&1; then
+            mkdir -p .existing-release
+            gh release download "$RELEASE_TAG" --pattern SHA256SUMS --dir .existing-release
+            cmp .existing-release/SHA256SUMS .release/SHA256SUMS
+          else
+            flags=()
+            if [ "$PRERELEASE" = true ]; then flags+=(--prerelease); fi
+            gh release create "$RELEASE_TAG" ".release/$ARCHIVE" .release/SHA256SUMS \
+              --verify-tag --title "jev-review $RELEASE_TAG" --notes-file .release/notes.md "${flags[@]}"
+          fi
+
+  publish-npm:
+    needs: [prepare, github-release]
+    if: github.event_name == 'push' || inputs.publish_npm
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    environment: npm
+    permissions:
+      contents: read
+      id-token: write
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ inputs.tag || github.ref }}
+          persist-credentials: false
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: 24
+          registry-url: https://registry.npmjs.org
+          package-manager-cache: false
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: release-package
+          path: .release
+      - name: Verify archive checksum
+        run: cd .release && sha256sum --check SHA256SUMS
+      - name: Check whether the exact npm artifact already exists
+        id: status
+        run: npm run release:info -- --publish-status
+      - name: Publish the verified archive
+        if: steps.status.outputs.publish_needed == 'true'
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+          ARCHIVE: ${{ needs.prepare.outputs.filename }}
+          NPM_DIST_TAG: ${{ needs.prepare.outputs.npm_tag }}
+        run: npm publish ".release/$ARCHIVE" --access public --provenance --tag "$NPM_DIST_TAG" --ignore-scripts
