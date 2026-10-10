@@ -160,6 +160,8 @@ test("shadow retains the original native enforcing reviewer", async t => {
   assert.deepEqual(await collect(ctx.llm.stream(request())), await collect(original()));
 });
 test("dsh configuration validates thresholds and model at activation", async t => {
+  assert.equal(Jev.Config({}).llmModel, "mimo-v2.6-flash");
+  assert.equal(Jev.Config({ llmModel: "custom-reviewer" }).llmModel, "custom-reviewer");
   assert.throws(() => Jev.Config({ probabilityThreshold: 0.1 }));
   assert.throws(() => Jev.Config(JSON.parse('{"mode":"off"}')));
   const ctx = new Context(); t.after(() => ctx.fiber.dispose());

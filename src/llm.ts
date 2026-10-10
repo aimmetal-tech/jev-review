@@ -29,7 +29,7 @@ export function readLLMConfig(env: NodeJS.ProcessEnv): LLMConfig {
   const baseUrl = env.JEV_LLM_BASE_URL ?? "https://token-plan-cn.xiaomimimo.com/v1";
   const url = new URL(baseUrl);
   if (url.protocol !== "https:" || url.username || url.password || url.search || url.hash) throw new Error("Invalid JEV_LLM_BASE_URL");
-  const model = env.JEV_LLM_MODEL ?? "mimo-v2.5-pro";
+  const model = env.JEV_LLM_MODEL ?? "mimo-v2.6-flash";
   if (!model.trim() || model.length > 128 || /\s/.test(model)) throw new Error("Invalid JEV_LLM_MODEL");
   const timeoutMs = env.JEV_LLM_TIMEOUT_MS === undefined ? 20000 : Number(env.JEV_LLM_TIMEOUT_MS);
   if (!Number.isSafeInteger(timeoutMs) || timeoutMs < 100 || timeoutMs > 120000) throw new Error("Invalid JEV_LLM_TIMEOUT_MS");

@@ -7,7 +7,7 @@ const state: ReviewState = { operation: { tool: "bash", source: "agent", cwd: "/
   userRequests: ["Install project dependencies"], incompleteContext: false };
 const llm = readLLMConfig({ MIMO_TP_KEY: "mock-llm-key" });
 function result(decision = "allow", authorization = "authorized", risk = "sensitive") {
-  return { model: "mimo-v2.5-pro", choices: [{ finish_reason: "stop", message: { content: JSON.stringify({ decision, authorization, risk,
+  return { model: "mimo-v2.6-flash", choices: [{ finish_reason: "stop", message: { content: JSON.stringify({ decision, authorization, risk,
     reason: "private provider prose", saferAlternative: "private injected alternative" }) } }], usage: { prompt_tokens: 20, completion_tokens: 10 } };
 }
 function jev(risk: string, authorization = "authorized") {
@@ -25,6 +25,7 @@ test("fallback uses the configured independent OpenAI-compatible reviewer and st
     assert.equal((init!.headers as Record<string, string>).Authorization, "Bearer mock-llm-key");
     assert.equal(init!.redirect, "error");
     const request = JSON.parse(init!.body as string);
+    assert.equal(request.model, "mimo-v2.6-flash");
     assert.deepEqual(request.response_format, { type: "json_object" });
     assert.equal(request.messages[0].content, LLM_POLICY);
     assert.deepEqual(JSON.parse(request.messages[1].content), state);
@@ -105,6 +106,7 @@ test("final review timeout aborts the request and does not expose provider data"
 });
 
 test("LLM endpoint and configuration do not allow key-leaking URLs", () => {
+  assert.equal(readLLMConfig({ JEV_LLM_MODEL: "custom-reviewer" }).model, "custom-reviewer");
   for (const env of [{ JEV_LLM_BASE_URL: "http://example.com" }, { JEV_LLM_BASE_URL: "https://key@example.com" },
     { JEV_LLM_BASE_URL: "https://example.com?key=value" }, { JEV_LLM_MODEL: "" }, { JEV_LLM_TIMEOUT_MS: "NaN" }]) {
     assert.throws(() => readLLMConfig(env));

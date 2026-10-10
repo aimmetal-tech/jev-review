@@ -93,7 +93,7 @@ Jev 调用官方 `POST https://api.typesafe.ai/v1/systemone`，一次请求同�
 | 用户授权 | authorized / unapproved / unclear |
 | 操作风险 | routine / sensitive / destructive / unknown |
 
-`authorized + routine` 且各自 probability ≥ 0.98、confidence ≥ 0.95 时快速批准；其他结果或 Jev 故障交给独立 LLM 复核。最终 LLM 使用 OpenAI 兼容 Chat Completions JSON 模式，默认 `mimo-v2.5-pro`，key 来自 `MIMO_TP_KEY`，base URL 为 `https://token-plan-cn.xiaomimimo.com/v1`。它独立判断授权、实际影响和边界变化；批准必须为明确授权且影响已知，敏感或破坏性操作只有在明确、有限的用户请求中才可批准。模型不替代执行器的固定约束。
+`authorized + routine` 且各自 probability ≥ 0.98、confidence ≥ 0.95 时快速批准；其他结果或 Jev 故障交给独立 LLM 复核。最终 LLM 使用 OpenAI 兼容 Chat Completions JSON 模式，默认 `mimo-v2.6-flash`，key 来自 `MIMO_TP_KEY`，base URL 为 `https://token-plan-cn.xiaomimimo.com/v1`。它独立判断授权、实际影响和边界变化；批准必须为明确授权且影响已知，敏感或破坏性操作只有在明确、有限的用户请求中才可批准。模型不替代执行器的固定约束。
 
 明确拒绝直接返回固定原因和更安全路径提示。无法可靠判断、未配置审查器或模型故障先返回拒绝以便恢复，连续 3 次未解决才进入人工一次性批准；`never` 和无审批渠道继续阻止。`manual` 是用户显式选择的逐次人工模式，不适用自动恢复策略。一次性许可绑定工具调用、载荷、会话、目录和取消生命周期，不能改变参数、沿用到后续操作或缓存为长期豁免。
 
@@ -165,7 +165,7 @@ L1 仅接受 `path` 与可选的正整数 `offset`、`limit`。普通相对/绝�
 | `JEV_SANDBOX_DOCKER` | 可信安装目录 | 可指定绝对 CLI 路径，不接受命令字符串 |
 | `MIMO_TP_KEY` | 未设置 | 独立 LLM 兜底 key |
 | `JEV_LLM_BASE_URL` | https://token-plan-cn.xiaomimimo.com/v1 | HTTPS OpenAI 兼容端点 |
-| `JEV_LLM_MODEL` | mimo-v2.5-pro | 独立最终审查模型 |
+| `JEV_LLM_MODEL` | mimo-v2.6-flash | 独立最终审查模型 |
 | `JEV_LLM_TIMEOUT_MS` | 20000 | 100–120000 ms |
 | `JEV_HUMAN_AFTER` | 3 | 连续未解决审查达到此数才人工，1–10 |
 | `JEV_L1_MODE` | observe | Pi 的 off / observe / enforce；DSH 不读取此字段 |

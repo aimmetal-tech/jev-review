@@ -75,7 +75,7 @@ npx @deepseek-ai/dsh@0.2.1-alpha.2 web
         sandboxTimeoutMs: 60000
         llmApiKeyEnv: MIMO_TP_KEY
         llmBaseUrl: https://token-plan-cn.xiaomimimo.com/v1
-        llmModel: mimo-v2.5-pro
+        llmModel: mimo-v2.6-flash
         llmTimeoutMs: 20000
         humanAfter: 3
 ```

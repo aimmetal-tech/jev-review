@@ -4,6 +4,7 @@
 
 ## [Unreleased]
 
+- Pi 与 DSH 的最终审查 LLM 默认改为 `mimo-v2.6-flash`；仍可通过 `JEV_LLM_MODEL` 或 DSH 的 `llmModel` 显式覆盖。
 - 新增真实 Docker 沙箱：站立权限内的受管操作直接执行；越界按 Jev 快速判断、独立 OpenAI 兼容 LLM 兜底逐层审查。
 - 默认最终模型使用 `MIMO_TP_KEY` 与 MiMo Token Plan 端点，主 Agent 的模型不替换；模型批准仅绑定一次操作，失败不会回退到宿主未隔离执行。
 - 默认先返回拒绝与替代路径，连续未解决 3 次才人工审批；明确拒绝不自动弹窗，保留 `manual` / `never` 与取消约束。

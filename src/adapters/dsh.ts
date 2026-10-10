@@ -23,7 +23,7 @@ export const Config = z.object({
   maxStateBytes: z.natural().min(1024).max(131072).default(32768),
   llmApiKeyEnv:z.string().default("MIMO_TP_KEY"),
   llmBaseUrl:z.string().default("https://token-plan-cn.xiaomimimo.com/v1"),
-  llmModel:z.string().default("mimo-v2.5-pro"),
+  llmModel:z.string().default("mimo-v2.6-flash"),
   llmTimeoutMs:z.natural().min(100).max(120000).default(20000),
   humanAfter:z.natural().min(1).max(10).default(3),
   sandboxMode:z.union([z.const("off"),z.const("read-only"),z.const("workspace-write")]).default("workspace-write"),
