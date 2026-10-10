@@ -12,7 +12,7 @@ Pi 入口可由 Pi 直接加载，无运行时第三方依赖。需要 Node.js �
 
 ```bash
 export TYPESAFE_API_KEY='your-key'
-pi install npm:jev-review@0.0.1
+pi install npm:jev-review@0.0.101
 ```
 
 上面的 npm 命令适用于该版本已发布之后；实际状态见 [npm 包页面](https://www.npmjs.com/package/jev-review)。也可从 [GitHub Releases](https://github.com/aimmetal-tech/jev-review/releases) 下载预构建 `.tgz`，或克隆源码，使用本地包：

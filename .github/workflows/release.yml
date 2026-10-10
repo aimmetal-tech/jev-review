@@ -121,7 +121,6 @@ jobs:
       - name: Publish the verified archive
         if: steps.status.outputs.publish_needed == 'true'
         env:
-          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
           ARCHIVE: ${{ needs.prepare.outputs.filename }}
           NPM_DIST_TAG: ${{ needs.prepare.outputs.npm_tag }}
         run: npm publish ".release/$ARCHIVE" --access public --provenance --tag "$NPM_DIST_TAG" --ignore-scripts

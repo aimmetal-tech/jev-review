@@ -4,6 +4,12 @@
 
 ## [Unreleased]
 
+## [0.0.101] - 2026-10-10
+
+- npm 发布仅使用 GitHub Actions Trusted Publishing（OIDC），移除发布 token 的读取与回退。
+- 同步 Trusted Publisher 配置说明、发布检查步骤及 Pi/DSH 安装版本。
+- 使用本版本验证 OIDC 发布、provenance 和 GitHub Release 产物的一致性。
+
 ## [0.0.1] - 2026-10-10
 
 首个公开版本，项目名称为 `jev-review`，采用 MIT 协议。

@@ -8,7 +8,7 @@
 
 ```bash
 export TYPESAFE_API_KEY='your-key'
-npx @deepseek-ai/dsh@0.2.1-alpha.2 plugin --profile web add jev-review@0.0.1
+npx @deepseek-ai/dsh@0.2.1-alpha.2 plugin --profile web add jev-review@0.0.101
 npx @deepseek-ai/dsh@0.2.1-alpha.2 web
 ```
 

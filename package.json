@@ -1,6 +1,6 @@
 {
   "name": "jev-review",
-  "version": "0.0.1",
+  "version": "0.0.101",
   "description": "TypeSafe Jev approval review for Pi and DeepSeek Harness",
   "type": "module",
   "license": "MIT",

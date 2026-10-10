@@ -28,7 +28,7 @@ Jev 接口使用结构化 Choice 决策，同一次请求评估授权和风险�
 | 测试 | `node:test` 与 `node:assert/strict`，Node.js 类型擦除；Jev 请求使用模拟响应 |
 | 构建 | esbuild，仅将 DSH 入口打包为 ESM；第三方包保持 external |
 | 包分发 | `package.json` 的 `pi.extensions`、`exports`、`files` 与 `dsh.bundle.patch` |
-| 发布 | GitHub Actions CI/Release、npm 公开包与 provenance；支持 NPM_TOKEN 和配置后的 OIDC |
+| 发布 | GitHub Actions CI/Release、npm 公开包与 provenance；仅使用 Trusted Publishing（OIDC），不读取发布 token |
 
 依赖版本和兼容范围以 `package.json`、`package-lock.json` 为准。Pi 入口应保持无运行时第三方依赖，不得间接导入 DSH 的运行时依赖。
 
