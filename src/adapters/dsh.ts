@@ -106,6 +106,8 @@ export function apply(ctx: Context, config: DshConfig): void {
   const resolved = readConfig({
     TYPESAFE_API_KEY: process.env[config.apiKeyEnv],
     JEV_MODEL: config.model, JEV_MODE: config.mode,
+    // Native snapshots lack the executor identity and session-bound grant required by L1.
+    JEV_L1_MODE: "off",
     JEV_PROBABILITY_THRESHOLD: String(config.probabilityThreshold),
     JEV_CONFIDENCE_THRESHOLD: String(config.confidenceThreshold),
     JEV_TIMEOUT_MS: String(config.timeoutMs), JEV_MAX_STATE_BYTES: String(config.maxStateBytes),

@@ -94,6 +94,18 @@ test("real native Auto and tool runtime execute the body only after Jev allows",
   assert.equal(calls, 1);
   assert.equal(h.ctx.permissionPresets.current(h.session), AUTO_PRESET);
 });
+test("Pi L1 environment configuration cannot bypass the native DSH reviewer", async t => {
+  const saved = process.env.JEV_L1_MODE;
+  process.env.JEV_L1_MODE = "enforce";
+  t.after(() => { if (saved === undefined) delete process.env.JEV_L1_MODE; else process.env.JEV_L1_MODE = saved; });
+  const h = await harness(t);
+  let calls = 0;
+  t.mock.method(globalThis, "fetch", async () => { calls++; return apiResponse("authorized", "routine"); });
+  assert.equal((await h.call()).isError, false);
+  assert.equal(calls, 1);
+  assert.equal(h.runs(), 1);
+});
+
 test("native ask policy presents Jev denial and grants only explicit one-shot approval", async t => {
   const h = await harness(t);
   t.mock.method(globalThis, "fetch", async () => apiResponse("authorized", "sensitive"));

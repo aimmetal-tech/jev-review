@@ -41,7 +41,7 @@ npm run release:info -- v0.0.101
 
 `prepack` 只负责构建，不能代替测试。发布任务将准备阶段验证过的同一个 tarball 发布到 npm 并上传 GitHub，不在发布阶段重新构建。用户安装发布包时无需执行构建或安装本项目的开发依赖。
 
-Pi 包入口为 `src/adapters/pi.ts`，DSH 源码入口为 `src/adapters/dsh.ts`；两者共用 `src/reviewer.ts`。打包检查验证这些源码与 `dist/dsh.js` 均在包内，并从包元数据加载 Pi 入口、从 `jev-review/dsh` 加载 DSH 构建产物。
+Pi 包入口为 `src/adapters/pi.ts`，DSH 源码入口为 `src/adapters/dsh.ts`；两者共用 `src/reviewer.ts`，本地分类模块为 `src/l1.ts`。打包检查验证这些源码与 `dist/dsh.js` 均在包内，并从包元数据加载 Pi 入口、从 `jev-review/dsh` 加载 DSH 构建产物。Pi 加载检查也确认任务授权与撤销所需事件已注册。
 
 打包检查须通过 `npm run check:package` 启动，以读取 npm 提供的 CLI 路径；脚本用 Node 执行该 CLI，兼容 Windows 和 Linux，无需通过 shell 拼接 npm 命令。
 

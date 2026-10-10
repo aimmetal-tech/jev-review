@@ -64,7 +64,7 @@ pi -e /absolute/path/to/jev-review/src/adapters/pi.ts
 
 ## 决策规则
 
-插件拦截所有 Agent 的 `tool_call`，包括 bash、read、edit、write 和自定义工具。向官方接口 `POST https://api.typesafe.ai/v1/systemone` 发出一次请求，在同一次请求中评估两个 Choice 问题：
+插件拦截所有 Agent 的 `tool_call`，包括 bash、read、edit、write 和自定义工具。先执行本地检查与 L1 规则；不能由 L1 快速放行的操作进入 L2，向官方接口 `POST https://api.typesafe.ai/v1/systemone` 发出一次请求，在同一次请求中评估两个 Choice 问题：
 
 | 问题 | 候选值 |
 | --- | --- |
@@ -77,9 +77,42 @@ pi -e /absolute/path/to/jev-review/src/adapters/pi.ts
 - 直接操作 `.env`、`.ssh`、`.aws`、`.gnupg`、`.codex`、`.pi` 或插件目录中的 path：人工确认，不向远端发送该操作。
 - 上下文超过预算、用户消息含图片或无法识别的内容：人工确认，不截断后放行。
 
-授权上下文来自当前会话分支上的用户文本消息，保留早先授权和较新限制。助手消息、工具返回和压缩摘要不作为用户授权证据。审查不读取磁盘文件内容；未知脚本、依赖和自定义工具的实际效果应归为 unknown。
+授权上下文来自当前会话分支上的用户文本消息，保留早先授权和较新限制。Pi 的只读任务授权另须由用户在 UI 确认，并绑定实际任务消息。助手消息、工具返回和压缩摘要不作为用户授权证据。审查不读取磁盘文件内容；L1 只查询文件元数据。未知脚本、依赖和自定义工具的实际效果应归为 unknown。
 
 Jev 的 confidence 由概率分布推导，不是独立的正确率保证。概率比较、批准规则和说明文字由本地代码处理，不要求 Jev 生成自由文本。
+
+## L1 只读任务授权（Pi）
+
+L1 只支持标准 Pi CLI 标记为内置的 `read`，不能仅凭工具名、描述、schema 或 `readOnlyHint` 放行。`write`、`edit`、shell、目录枚举及自定义工具继续进入 Jev。DSH 的原生快照没有可靠执行器身份与会话授权绑定，首版不启用 L1 快速放行。
+
+默认 L1 档位为 `observe`：记录候选命中，实际仍由 Jev 审批。`enforce` 只有在审查模式为 `auto` 且任务授权有效时才跳过 Jev；`off` 关闭分类。L1 观察档与 `/jev mode shadow` 不同：观察档保留 Jev 审批，Pi shadow 不依据判断阻止操作。
+
+在**普通项目**中，先建立观察任务，例如有现存 `docs` 子目录时：
+
+```text
+/jev l1 observe
+/jev read-task docs -- 请用 read 读取 docs/usage.md 的前 20 行，不修改文件。
+```
+
+命令在 UI 展示完整任务、目录、保护例外和随机任务编号；只有用户确认后才提交任务。它要求宿主空闲、没有待发送消息、有交互 UI、上下文为完整文本，目录必须是工作区内现存的非链接子目录。目录和任务由第一个 ` -- ` 分隔，任务里后续的 ` -- ` 会保留；目录路径不需要额外引号。
+
+这是一条新的、明确的目录只读授权，覆盖该范围内更早的读取限制，但不绕过凭据与插件目录保护，也不授予其他操作权限。任务文本包含确认后的授权范围和编号，编号只用于绑定。任务被扩展改写、派发失败或消息身份不匹配时，不建立快速授权。
+
+观察结果符合预期后，在宿主空闲时切换档位，并为新任务重新确认：
+
+```text
+/jev l1 enforce
+/jev read-task docs -- 请用 read 读取 docs/usage.md 的前 20 行，不修改文件。
+/jev status
+```
+
+L1 仅接受 `path` 与可选的正整数 `offset`、`limit`。普通相对/绝对路径会检查实际目标、工作区与授权范围、普通文件类型和每级目录；符号链接、Windows junction、目录、缺失文件、未知参数、`~`、`@`、file URL、Windows shell 路径等特殊语法升级 Jev。文件元数据检查失败也升级，不猜测目标。
+
+授权仅存于内存。除命令生成的那一次预期任务输入外，任何新输入、任务结束、会话切换、分支导航、压缩、重载，以及模式切换均撤销授权；确认或审批期间状态变化不能获得快速放行。没有 API key、manual 模式、保护路径、上下文不完整或超预算时，仍优先走原来的人工审批/阻止流程。
+
+**当前目录名保护保持原样**：路径含 `jev-review` 或 `pi-jev-review` 目录段会转人工，因此在本仓库直接试验普通文件读取也可能命中保护。验证 L1 请使用普通测试项目；目录名保护的收窄留作独立修改。
+
+快速放行信任标准 Pi CLI 的内置 `read` 契约，不支持用定制 SDK 替换底层执行器后开启 enforce。没有可用来源字段的宿主、同名扩展工具均升级 Jev。检查不锁定文件系统，也不能阻止后置扩展改变参数；仍应将插件放在参数修改扩展之后，并使用宿主权限与沙箱。
 
 ## 模式与配置
 
@@ -88,11 +121,16 @@ Jev 的 confidence 由概率分布推导，不是独立的正确率保证。概�
 /jev mode auto
 /jev mode manual
 /jev mode shadow
+/jev l1 off
+/jev l1 observe
+/jev l1 enforce
 ```
 
 `auto` 默认执行审查策略。`manual` 不调用模型，每次要求人工批准。`shadow` 只提示判断，**不依据审查结果阻止执行**，用于评估；通过命令启用时须确认。取消审查、参数变化或配置无效仍会阻止执行。
 
-状态显示模式、模型、阈值、判定计数、已返回的 token 用量、平均审查耗时及最近判断，不显示 API key 或原始操作。统计和模式切换仅存于内存，重新加载后重置。已开始的审查沿用开始时的配置。
+状态显示模式、模型、阈值、判定计数、已返回的 token 用量、平均审查耗时及最近判断，不显示 API key、原始操作或任务。统计和模式切换仅存于内存，重新加载后重置。已开始的审查沿用开始时的配置；撤销授权或参数变化仍会阻止该操作。
+
+`layers` 分开记录 `l1Candidates`（满足规则的候选）、`l1Allows`（通过 Pi gate 的 L1 放行）、`jevRequests`（实际调用 fetch 的请求尝试）、`localFallbacks`（本地回退），以及有效 Jev 结果中的 `comparedAllow / comparedDeny / comparedReview`。HTTP/超时/无效响应不计入有效结果对照。`stats.calls` 是审查总数，不能当作 API 调用数；L1 放行也不保证下游一定执行。L1 结果不伪造 probability、confidence 或 token 用量。
 
 配置只读取启动进程的环境变量，不加载项目策略文件。修改后重新启动 Pi。
 
@@ -101,6 +139,7 @@ Jev 的 confidence 由概率分布推导，不是独立的正确率保证。概�
 | `TYPESAFE_API_KEY` | 未设置 | 未设置时转人工确认 |
 | `JEV_MODEL` | `jev-1.13.0` | 固定版本；也支持 jev-latest、jev-preview |
 | `JEV_MODE` | auto | auto / manual / shadow |
+| `JEV_L1_MODE` | observe | Pi 的 off / observe / enforce；DSH 不读取此字段 |
 | `JEV_PROBABILITY_THRESHOLD` | 0.98 | 范围 0.5–1 |
 | `JEV_CONFIDENCE_THRESHOLD` | 0.95 | 范围 0.5–1 |
 | `JEV_TIMEOUT_MS` | 5000 | 请求及读取响应的总超时，100–60000 ms |
@@ -121,7 +160,7 @@ npm run check:package
 
 `check:package` 通过 `prepack` 自动构建，生成 `.release/` 下的 tarball 和 SHA-256 校验文件，并在干净目录安装发布包，验证 Pi 加载器与 DSH 原生审批链路。它需要 npm registry 网络访问。项目结构、结构性同步规则、Git 提交规范和提交检查点见 [AGENTS.md](https://github.com/aimmetal-tech/jev-review/blob/main/AGENTS.md)。
 
-测试覆盖 Pi 拦截、dsh 请求转换及原生审批流程，以及决策阈值、故障回退、取消和参数变化。Jev API 响应使用模拟数据；这些测试不能证明模型的实际分类质量。
+测试覆盖 L1 的授权/身份/路径边界、观察与执行档、Pi 授权生命周期、dsh 请求转换及原生审批流程，以及决策阈值、故障回退、取消和参数变化。Jev API 响应使用模拟数据；这些测试不能证明模型的实际分类质量，也不是实际成本或延迟测量。
 
 根据 [TypeSafe 模型文档](https://docs.typesafe.ai/models)（2026-10-09），Jev 1.13 输入价格为 **$0.042 / 百万 token**，输出免费。每次若消耗 2000 输入 token，约 $0.000084；10 万次约 $8.40。这是按文档价格计算的估算，未实测成本、延迟或相对其他模型的降幅。
 
@@ -129,7 +168,7 @@ npm run check:package
 
 ## 数据与覆盖边界
 
-自动审查会向 TypeSafe 发送本次工具参数、工具描述、工作目录和用户文本请求，这些字段可能包含源代码或私密文本。路径保护只覆盖直接 path 参数，不能识别所有秘密、符号链接或 shell 中的隐藏路径。人工确认会显示本次完整参数；通知不打印 API key 或服务端错误正文。
+L2 自动审查会向 TypeSafe 发送本次工具参数、工具描述、工作目录和用户文本请求，这些字段可能包含源代码或私密文本，包括已确认任务中的目录与任务编号。L1 执行档命中时不发送该次操作；L1 的工具来源与授权记录不作为远端请求字段。路径保护只覆盖直接 path 参数，不能识别所有秘密或 shell 中的隐藏路径；L1 检查链接不等于 L2 路径保护全面解析链接。人工确认会显示本次完整参数；通知不打印 API key 或服务端错误正文。
 
 这是执行前审批扩展，不是操作系统沙箱。[Jev 官方已知局限](https://docs.typesafe.ai/model-jaggedness/jev-1.13)包括对抗性内容、间接推理和大上下文。需要强隔离时应同时使用文件系统、网络权限限制及沙箱。
 

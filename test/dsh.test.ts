@@ -103,6 +103,16 @@ test("Jev approval becomes exactly the native low/allow protocol plus token usag
   assert.deepEqual(chunks.find(c => c.type === "usage"), { type: "usage", usage: { inputTokens: 700, outputTokens: 40 } });
   assert.deepEqual(chunks.at(-1), { type: "finish", reason: { kind: "stop" } });
 });
+test("a read-shaped DSH request still reaches Jev even with enforce in the shared config", async () => {
+  let calls = 0;
+  const options = request(undefined, undefined, { name: "read", arguments: { path: "src/main.ts", limit: 20 } });
+  const chunks = await collect(Jev.reviewStream(options, { ...config, l1Mode: "enforce" }, async () => {
+    calls++; return apiResponse("unapproved");
+  }));
+  assert.equal(calls, 1);
+  assert.equal(decision(chunks).decision, "deny");
+});
+
 test("denials, uncertain risk, missing credentials and HTTP failure return native deny", async () => {
   for (const [authorization, risk] of [["unapproved", "routine"], ["authorized", "sensitive"], ["authorized", "destructive"], ["authorized", "unknown"]]) {
     assert.equal(decision(await collect(Jev.reviewStream(request(), config, async () => apiResponse(authorization, risk)))).decision, "deny");

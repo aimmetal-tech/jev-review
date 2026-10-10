@@ -31,11 +31,12 @@ function mockFetch(body: unknown): typeof fetch {
 test("defaults use a pinned Jev model and enforce approvals", () => {
   assert.equal(config.model, "jev-1.13.0");
   assert.equal(config.mode, "auto");
+  assert.equal(config.l1Mode, "observe");
   assert.equal(config.probabilityThreshold, 0.98);
 });
 test("invalid settings do not silently weaken the gate", () => {
   for (const env of [
-    { JEV_MODE: "off" }, { JEV_PROBABILITY_THRESHOLD: "NaN" }, { JEV_PROBABILITY_THRESHOLD: "0" },
+    { JEV_MODE: "off" }, { JEV_L1_MODE: "auto" }, { JEV_PROBABILITY_THRESHOLD: "NaN" }, { JEV_PROBABILITY_THRESHOLD: "0" },
     { JEV_CONFIDENCE_THRESHOLD: "2" }, { JEV_TIMEOUT_MS: "1.2" }, { JEV_TIMEOUT_MS: "" },
     { JEV_MAX_STATE_BYTES: "-1" }, { JEV_REVIEW_USER_BASH: "yes" }, { JEV_MODEL: "other-model" },
   ]) assert.throws(() => readConfig(env));

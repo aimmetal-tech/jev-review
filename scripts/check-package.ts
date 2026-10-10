@@ -4,7 +4,7 @@ import { createHash } from "node:crypto";
 import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { basename, join, resolve } from "node:path";
-import { transform } from "esbuild";
+import { build, transform } from "esbuild";
 
 const root = process.cwd();
 const output = resolve(root, ".release");
@@ -30,7 +30,7 @@ try {
   assert.equal(packed.version, metadata.version);
   assert.equal(packed.filename, `jev-review-${metadata.version}.tgz`);
   const paths = new Set<string>(packed.files.map((file: { path: string }) => file.path));
-  for (const path of ["package.json", "README.md", "LICENSE", "CHANGELOG.md", "docs/RELEASING.md", "src/adapters/pi.ts", "src/adapters/dsh.ts", "src/reviewer.ts", "dist/dsh.js", "dsh/cordis.patch.yml", "dsh/icon.svg", "dsh/locale/en.json", "dsh/locale/zh.json"]) {
+  for (const path of ["package.json", "README.md", "LICENSE", "CHANGELOG.md", "docs/RELEASING.md", "src/adapters/pi.ts", "src/adapters/dsh.ts", "src/reviewer.ts", "src/l1.ts", "dist/dsh.js", "dsh/cordis.patch.yml", "dsh/icon.svg", "dsh/locale/en.json", "dsh/locale/zh.json"]) {
     assert.ok(paths.has(path), `Missing package resource: ${path}`);
   }
   for (const path of paths) {
@@ -52,9 +52,10 @@ try {
   run(process.execPath, ["package-smoke.mjs"], temp);
 
   // Native Node type stripping is intentionally disabled inside node_modules.
-  // Compile only the installed core used by the fixture to make its Choice responses.
-  const fixtureCore = await transform(readFileSync(join(installed, "src/reviewer.ts"), "utf8"), { loader: "ts", format: "esm", target: "node22" });
-  writeFileSync(join(temp, "fixture-reviewer.mjs"), fixtureCore.code);
+  // Bundle the installed core and its local dependencies for the fixture's Choice responses.
+  const fixtureCore = await build({ entryPoints: [join(installed, "src/reviewer.ts")], bundle: true, write: false,
+    platform: "node", format: "esm", target: "node22", packages: "external" });
+  writeFileSync(join(temp, "fixture-reviewer.mjs"), fixtureCore.outputFiles[0].text);
   const nativeSource = readFileSync(resolve(root, "test/dsh-native.test.ts"), "utf8")
     .replace('"../src/adapters/dsh.ts"', '"jev-review/dsh"')
     .replace('"../src/reviewer.ts"', '"./fixture-reviewer.mjs"');

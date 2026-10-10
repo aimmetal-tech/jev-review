@@ -20,7 +20,7 @@ Jev 接口使用结构化 Choice 决策，同一次请求评估授权和风险�
 | --- | --- |
 | 运行环境 | Node.js ≥ 22.19，npm，原生 ESM（`type: module`） |
 | 语言 | TypeScript，`strict`，`NodeNext` 模块解析；源码使用显式 `.ts` 导入 |
-| 共用审查器 | Node.js 内置 API、`fetch`、`AbortController`；调用 TypeSafe Jev 官方接口 |
+| 共用审查器 | Node.js 内置 API、文件元数据检查、`fetch`、`AbortController`；L1 确定性规则与 L2 TypeSafe Jev 官方接口 |
 | Pi 适配 | Pi Extension API；`src/adapters/pi.ts` 为入口，宿主类型导入在运行时擦除 |
 | DSH 适配 | Cordis 插件与 `llm/stream` middleware、Schemastery 配置 schema、DSH 原生 Auto review |
 | Lint | **Oxlint**，配置为 `.oxlintrc.json`；警告和错误均使检查失败 |
@@ -57,6 +57,7 @@ jev-review/
 |   `-- package-smoke.ts        # 已安装包的 Pi 加载与 DSH 导出验证
 |-- src/
 |   |-- reviewer.ts             # Jev 客户端、授权/风险规则、配置与判定
+|   |-- l1.ts                   # 可信工具、只读范围与规范路径的本地分类
 |   `-- adapters/
 |       |-- pi.ts               # Pi 工具拦截、人工审批与 /jev 命令
 |       `-- dsh.ts              # DSH 原生审查协议转换与 Cordis 生命周期
@@ -69,7 +70,8 @@ jev-review/
 |       `-- zh.json             # 中文插件元数据
 |-- test/
 |   |-- reviewer.test.ts        # 配置、判定、上下文、路径与 API 故障回退
-|   |-- extension.test.ts       # Pi 事件、交互、取消与参数变化
+|   |-- l1.test.ts              # L1 分类、范围、链接、观察与执行档边界
+|   |-- extension.test.ts       # Pi 事件、任务授权生命周期、交互、取消与参数变化
 |   |-- dsh.test.ts             # DSH 协议转换与 Cordis middleware
 |   |-- dsh-native.test.ts      # 真实 DSH 服务的原生审批链路
 |   `-- release.test.ts         # 发布身份、版本、说明与重复发布保护
@@ -87,7 +89,7 @@ jev-review/
 | --- | --- |
 | 新增、删除、移动文件或目录 | 更新本文件的结构树及职责说明；修正所有受影响的源码/测试导入和文档链接。若影响源码或测试发现，检查 `tsconfig.json.include`、Lint 路径和 `package.json.scripts.test`；若影响分发，检查 `files`、`exports` 和宿主入口。 |
 | 项目名、包名、仓库地址或许可证变化 | 同步 `package.json`、npm 生成的锁文件、`README.md`、本文件和 `LICENSE` 中对应的信息；包名变化还需更新 `dsh/cordis.patch.yml`、`dsh/README.md` 的模块名及安装路径。检查插件目录的路径保护规则和测试。 |
-| 共用判定策略、Jev 问题/API 格式、阈值、上下文或路径保护变化 | 同步 `src/reviewer.ts` 与 `test/reviewer.test.ts`；检查两个适配器的集成测试。更新 `README.md` 的规则、配置和数据边界；DSH 行为受影响时同步 `dsh/README.md`。 |
+| 共用判定策略、Jev 问题/API 格式、阈值、上下文或路径保护变化 | 同步 `src/reviewer.ts`、`src/l1.ts` 与对应测试；检查两个适配器的集成测试。更新 `README.md` 的规则、配置和数据边界；DSH 行为受影响时同步 `dsh/README.md`。 |
 | Pi 事件、命令、模式、交互或入口变化 | 同步 `src/adapters/pi.ts`、`test/extension.test.ts`、`README.md`；入口或宿主依赖变化时同步 `package.json.pi`、依赖声明与锁文件。 |
 | DSH 配置、原生协议、审批映射或生命周期变化 | 同步 `src/adapters/dsh.ts`、`test/dsh.test.ts`、`test/dsh-native.test.ts`、`dsh/README.md`；插件默认配置变化时检查 `dsh/cordis.patch.yml`。确认 Pi 行为是否受共用核心影响。 |
 | DSH 兼容版本变化 | 同步 `package.json` 的开发依赖、peer 范围及锁文件，核对 `REVIEW_POLICY_SHA256` 和请求形状，运行原生审批链路测试，更新 `dsh/README.md` 的已验证版本。不得为通过测试而关闭协议校验。 |
@@ -100,6 +102,7 @@ jev-review/
 补充约定：
 
 - 改变公共行为时，同轮更新说明和有意义的行为测试。测试应验证结果与边界，不应仅复述实现。
+- L1 快速放行必须同时满足可信工具来源、UI 确认的当前任务授权及路径规则；不得从名称、描述或工具参数推导权限。默认 observe，DSH 因缺少身份与会话绑定不启用 L1；凭据/上下文/key 等前置回退优先于 L1。
 - 修改共用核心或 DSH 入口后，重新构建 `dist/dsh.js`；直接编辑构建产物不会修复源码。
 - 修改包名、入口、导出或分发资源后，执行打包检查，确认包内包含 Pi 源码、DSH 构建产物、patch、locale、图标及许可证。
 - 不手工改写锁文件来伪装依赖变更，也不把 API key、真实凭据或私密操作样本放入源码、测试、文档或提交。
