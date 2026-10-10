@@ -186,7 +186,7 @@ export function isSensitivePath(operation: Operation): boolean {
   // This is a review trigger, not a shell parser or a filesystem sandbox.
   const path = operation.input.path;
   if (typeof path !== "string") return false;
-  return /(?:^|[/\\])(?:\.env(?:\.[^/\\]*)?|\.ssh|\.aws|\.gnupg|\.codex|\.pi|\.dsh|pi-jev-review)(?:$|[/\\])/i.test(resolve(operation.cwd, path));
+  return /(?:^|[/\\])(?:\.env(?:\.[^/\\]*)?|\.ssh|\.aws|\.gnupg|\.codex|\.pi|\.dsh|jev-review|pi-jev-review)(?:$|[/\\])/i.test(resolve(operation.cwd, path));
 }
 
 export async function review(

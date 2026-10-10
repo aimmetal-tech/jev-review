@@ -2,7 +2,7 @@
     - id: auto-review
       name: '@deepseek-ai/dsh-experimental-auto-review'
     - id: jev-auto-review
-      name: 'pi-jev-review/dsh'
+      name: 'jev-review/dsh'
       config:
         mode: auto
         model: jev-1.13.0

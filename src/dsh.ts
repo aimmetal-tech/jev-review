@@ -144,6 +144,6 @@ export function apply(ctx: Context, config: DshConfig): void {
   }, { prepend: true });
   ctx.effect(() => async () => {
     lifecycle.abort();
-    await Promise.allSettled([...active]);
+    await Promise.allSettled(active);
   }, "Jev review requests");
 }

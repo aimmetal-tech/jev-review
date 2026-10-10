@@ -1,6 +1,8 @@
-# Pi Jev Review
+# jev-review
 
-使用 TypeSafe 的 Jev 决策模型，在 Pi Harness 执行工具前自动审查授权范围和操作风险。可由 Pi 直接加载，无运行时第三方依赖。需要 Node.js ≥ 22.19。
+使用 TypeSafe 的 Jev 决策模型，自动审查 Coding Agent 工具调用的授权范围和操作风险。项目与包名均为 `jev-review`，现阶段支持 **Pi Harness** 和 **DeepSeek Harness（DSH）**，采用 MIT 协议。
+
+Pi 入口可由 Pi 直接加载，无运行时第三方依赖。需要 Node.js ≥ 22.19。
 
 也提供 **DeepSeek Harness（dsh）适配器**，接管原生 Auto review 的模型请求；安装和配置见 [dsh 使用说明](dsh/README.md)。Pi 入口不导入 dsh 运行时。
 
@@ -10,13 +12,13 @@
 
 ```bash
 export TYPESAFE_API_KEY='your-key'
-pi -e /absolute/path/to/pi-jev-review/src/index.ts
+pi -e /absolute/path/to/jev-review/src/index.ts
 ```
 
 也可以安装成 Pi 包：
 
 ```bash
-pi install /absolute/path/to/pi-jev-review
+pi install /absolute/path/to/jev-review
 ```
 
 安装后重新启动 Pi，或在现有会话执行 `/reload`。扩展类型检查使用 `@earendil-works/pi-coding-agent` 1.1.0；类型导入会被擦除。旧版 `@mariozechner/pi-coding-agent` 的相同核心接口可用，但需要在目标版本上验证。
@@ -72,9 +74,13 @@ Jev 的 confidence 由概率分布推导，不是独立的正确率保证。概�
 
 ```bash
 npm ci --ignore-scripts
+npm run lint
 npm run check
 npm test
+npm run build
 ```
+
+Lint 使用 **Oxlint**，规则在 [.oxlintrc.json](.oxlintrc.json) 中配置；`npm run lint` 检查源码与测试，警告也会使检查失败。可用 `npm run lint:fix` 自动修复支持的规则。`npm run check` 独立运行 TypeScript 严格类型检查。
 
 测试覆盖 Pi 拦截、dsh 请求转换及原生审批流程，以及决策阈值、故障回退、取消和参数变化。Jev API 响应使用模拟数据；这些测试不能证明模型的实际分类质量。
 
@@ -91,3 +97,7 @@ npm test
 插件无法限制其他扩展直接使用 `pi.exec`、直接访问文件系统、工具内部绕过 Pi 执行的动作或外部进程。后续 `tool_call` 处理器修改参数不会自动触发二次审查，应把本插件放在修改参数的扩展之后。其他扩展提前处理 `user_bash` 时，也可能使本插件收不到事件。
 
 接口参考：[TypeSafe API](https://docs.typesafe.ai/api)、[置信度](https://docs.typesafe.ai/confidence)、[Pi 扩展](https://github.com/earendil-works/pi/blob/main/packages/coding-agent/docs/extensions.md)、[Pi 包安装](https://github.com/earendil-works/pi/blob/main/packages/coding-agent/docs/packages.md)。
+
+## 协议
+
+[MIT](LICENSE)

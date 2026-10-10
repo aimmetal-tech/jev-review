@@ -1,9 +1,13 @@
 {
-  "name": "pi-jev-review",
+  "name": "jev-review",
   "version": "0.1.0",
   "description": "TypeSafe Jev approval review for Pi and DeepSeek Harness",
   "type": "module",
   "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/aimmetal-tech/jev-review.git"
+  },
   "keywords": [
     "pi-package",
     "pi",
@@ -28,16 +32,18 @@
     ]
   },
   "scripts": {
+    "lint": "oxlint --deny-warnings src test",
+    "lint:fix": "oxlint --fix --deny-warnings src test",
     "check": "tsc --noEmit",
     "test": "node --experimental-strip-types test/reviewer.test.ts && node --experimental-strip-types test/extension.test.ts && node --experimental-strip-types test/dsh.test.ts && node --experimental-strip-types test/dsh-native.test.ts",
     "build": "esbuild src/dsh.ts --bundle --platform=node --format=esm --packages=external --outfile=dist/dsh.js"
   },
   "peerDependencies": {
-    "@earendil-works/pi-coding-agent": "*",
-    "@mariozechner/pi-coding-agent": "*",
     "@deepseek-ai/cordis": "4.0.4 || 4.0.5-alpha.1",
+    "@deepseek-ai/dsh-experimental-auto-review": "0.2.0-rc.2 || 0.2.1-alpha.2",
     "@deepseek-ai/dsh-llm": "0.2.0-rc.2 || 0.2.1-alpha.2",
-    "@deepseek-ai/dsh-experimental-auto-review": "0.2.0-rc.2 || 0.2.1-alpha.2"
+    "@earendil-works/pi-coding-agent": "*",
+    "@mariozechner/pi-coding-agent": "*"
   },
   "peerDependenciesMeta": {
     "@earendil-works/pi-coding-agent": {
@@ -63,6 +69,8 @@
     "@deepseek-ai/dsh-llm": "0.2.1-alpha.2",
     "@deepseek-ai/dsh-permission-presets": "0.2.1-alpha.2",
     "@deepseek-ai/dsh-session": "0.2.1-alpha.2",
+    "@deepseek-ai/dsh-session-projection": "0.2.1-alpha.2",
+    "@deepseek-ai/dsh-system-prompt": "0.2.1-alpha.2",
     "@deepseek-ai/dsh-tools": "0.2.1-alpha.2",
     "@deepseek-ai/dsh-user-approval": "0.2.1-alpha.2",
     "@deepseek-ai/dsh-working-directory": "0.2.1-alpha.2",
@@ -70,9 +78,8 @@
     "@earendil-works/pi-coding-agent": "1.1.0",
     "@types/node": "^22.19.0",
     "esbuild": "^0.27.4",
-    "typescript": "~5.9.3",
-    "@deepseek-ai/dsh-session-projection": "0.2.1-alpha.2",
-    "@deepseek-ai/dsh-system-prompt": "0.2.1-alpha.2"
+    "oxlint": "1.87.0",
+    "typescript": "~5.9.3"
   },
   "exports": {
     "./dsh": "./dist/dsh.js",

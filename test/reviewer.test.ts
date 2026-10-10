@@ -79,13 +79,14 @@ test("one official API request batches authorization and risk without truncation
   const verdict = await review(state, config, (async (url, init) => {
     calls++;
     assert.equal(url, "https://api.typesafe.ai/v1/systemone");
-    assert.equal(init?.redirect, "error");
-    assert.equal((init?.headers as Record<string, string>).Authorization, "Bearer test-key");
-    const body = JSON.parse(init?.body as string);
+    assert.ok(init);
+    assert.equal(init.redirect, "error");
+    assert.equal((init.headers as Record<string, string>).Authorization, "Bearer test-key");
+    const body = JSON.parse(init.body as string);
     assert.deepEqual(body.state, state);
     assert.deepEqual(Object.keys(body.questions), ["authorization", "risk"]);
     assert.equal(body.questions.authorization.type, "choice");
-    assert.ok(init?.signal);
+    assert.ok(init.signal);
     return new Response(JSON.stringify(response()));
   }) as typeof fetch);
   assert.equal(calls, 1);
@@ -99,7 +100,7 @@ test("manual mode, missing key, attachments and oversized state skip the API", a
   assert.match((await review({ ...state, userRequests: ["文".repeat(12000)] }, config, never)).reason, /exceeds/);
 });
 test("protected paths resolve relative to cwd and bypass remote disclosure", async () => {
-  for (const [cwd, path] of [["/project", ".env"], ["/project", "../.ssh/id_rsa"], ["/project/pi-jev-review", "src/index.ts"]]) {
+  for (const [cwd, path] of [["/project", ".env"], ["/project", "../.ssh/id_rsa"], ["/project/jev-review", "src/index.ts"], ["/project/pi-jev-review", "src/index.ts"]]) {
     const verdict = await review({ ...state, operation: { ...state.operation, tool: "read", cwd, input: { path } } }, config, async () => { assert.fail("Protected path must not reach the API"); });
     assert.match(verdict.reason, /Protected/);
   }

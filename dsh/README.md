@@ -1,4 +1,4 @@
-# DeepSeek Harness 的 Jev 自动审查适配器
+# jev-review：DeepSeek Harness（DSH）适配器
 
 适配当前最新预览版 `dsh@0.2.1-alpha.2`，也在 npm 默认版 `0.2.0-rc.2` 上验证了打包插件的原生工具与审批流程。开发依赖固定版本，避免开发预览期接口变动使测试悄悄换目标。
 
@@ -15,13 +15,13 @@ npm run build
 
 ```bash
 export TYPESAFE_API_KEY='your-key'
-npx @deepseek-ai/dsh@alpha plugin --profile web add /absolute/path/to/pi-jev-review
+npx @deepseek-ai/dsh@alpha plugin --profile web add /absolute/path/to/jev-review
 npx @deepseek-ai/dsh@alpha web
 ```
 
 已安装 dsh 的环境可直接使用 `dsh plugin --profile web add ...` 和 `dsh web`。Bundle 同时声明原生 `auto-review` 行和 `jev-auto-review` 适配行，**安装不会替用户切换会话权限**。在当前会话选择 Auto review，或使用原生 `/permission auto`，才会开始审查工具调用。已有安装更新本地包后应重启 dsh，以加载新的 JavaScript 模块。
 
-此仓库仍以 `pi-jev-review` 为包名：Pi 加载 `src/index.ts`；dsh 加载独立导出 `pi-jev-review/dsh`（`dist/dsh.js`）。dsh 入口使用 Cordis 和 Schemastery，Jev HTTP 客户端和决策代码与 Pi 共用。
+项目与包名均为 `jev-review`：Pi 加载 `src/index.ts`；dsh 加载独立导出 `jev-review/dsh`（`dist/dsh.js`）。dsh 入口使用 Cordis 和 Schemastery，Jev HTTP 客户端和决策代码与 Pi 共用。
 
 ## 接入方式
 
@@ -49,7 +49,7 @@ npx @deepseek-ai/dsh@alpha web
 ```yaml
 - insert:
     - id: jev-auto-review
-      name: pi-jev-review/dsh
+      name: jev-review/dsh
       config:
         apiKeyEnv: TYPESAFE_API_KEY
         model: jev-1.13.0
@@ -72,6 +72,7 @@ npx @deepseek-ai/dsh@alpha web
 
 ```bash
 npm run check
+npm run lint
 npm test
 npm run build
 npm pack --ignore-scripts
