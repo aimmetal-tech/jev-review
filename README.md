@@ -6,16 +6,52 @@ Pi 入口可由 Pi 直接加载，无运行时第三方依赖。需要 Node.js �
 
 也提供 **DeepSeek Harness（dsh）适配器**，接管原生 Auto review 的模型请求；安装和配置见 [dsh 使用说明](dsh/README.md)。Pi 入口不导入 dsh 运行时。
 
-## 使用
+## npm 安装与启用
 
-在 [TypeSafe 控制台](https://console.typesafe.ai/keys) 创建 API key，在启动 Pi 的终端中设置：
+需要先安装对应的宿主。插件通过 Pi 或 DSH 的插件管理命令从 npm 安装，发布包无需克隆源码或手动构建。可用版本见 [npm 包页面](https://www.npmjs.com/package/jev-review)。
+
+在 [TypeSafe 控制台](https://console.typesafe.ai/keys) 创建 API key，在启动宿主的同一个终端中设置：
 
 ```bash
 export TYPESAFE_API_KEY='your-key'
-pi install npm:jev-review@0.0.101
 ```
 
-上面的 npm 命令适用于该版本已发布之后；实际状态见 [npm 包页面](https://www.npmjs.com/package/jev-review)。也可从 [GitHub Releases](https://github.com/aimmetal-tech/jev-review/releases) 下载预构建 `.tgz`，或克隆源码，使用本地包：
+Windows PowerShell 使用：
+
+```powershell
+$env:TYPESAFE_API_KEY = 'your-key'
+```
+
+### Pi
+
+安装 npm 的最新发布版本：
+
+```bash
+pi install npm:jev-review
+```
+
+如需固定版本，使用 `pi install npm:jev-review@0.0.101`。默认安装到个人配置；仅当前项目使用时，执行 `pi install --local npm:jev-review@0.0.101`。
+
+安装后重新启动 Pi，或在现有会话执行 `/reload`，然后用 `/jev status` 查看插件状态。默认 `auto` 模式会审查工具调用；缺少 API key 时转人工确认，无交互界面时阻止执行。
+
+扩展类型检查使用 `@earendil-works/pi-coding-agent` 1.1.0；类型导入会被擦除。旧版 `@mariozechner/pi-coding-agent` 的相同核心接口可用，但需要在目标版本上验证。
+
+### DeepSeek Harness（DSH）
+
+以下命令将 npm 插件包安装到 Web profile，并启动已验证版本的 DSH：
+
+```bash
+npx @deepseek-ai/dsh@0.2.1-alpha.2 plugin --profile web add jev-review@0.0.101
+npx @deepseek-ai/dsh@0.2.1-alpha.2 web
+```
+
+已安装该版本 DSH 时，也可使用 `dsh plugin --profile web add jev-review@0.0.101` 和 `dsh web`。省略插件包的 `@0.0.101` 可安装 npm 的最新发布版本。
+
+在当前会话选择 **Auto review**，或执行 `/permission auto`，才会启用审查。安装插件不会自动切换会话权限。API key 从启动 DSH 的进程环境读取；安装不会替换主 Agent 的模型配置。更多配置和兼容边界见 [DSH 使用说明](dsh/README.md)。
+
+### 其他安装方式
+
+也可从 [GitHub Releases](https://github.com/aimmetal-tech/jev-review/releases) 下载预构建 `.tgz`，或克隆源码，使用本地包。Pi 示例：
 
 ```bash
 pi install /absolute/path/to/jev-review
@@ -23,8 +59,6 @@ pi -e /absolute/path/to/jev-review/src/index.ts
 ```
 
 第一条命令持久安装，第二条只在本次 Pi 启动时加载。Release 附件已包含 DSH 构建产物；下载、校验、DSH 安装及维护者发布步骤见 [发布说明](docs/RELEASING.md)。版本变更见 [更新日志](CHANGELOG.md)。
-
-安装后重新启动 Pi，或在现有会话执行 `/reload`。扩展类型检查使用 `@earendil-works/pi-coding-agent` 1.1.0；类型导入会被擦除。旧版 `@mariozechner/pi-coding-agent` 的相同核心接口可用，但需要在目标版本上验证。
 
 ## 决策规则
 

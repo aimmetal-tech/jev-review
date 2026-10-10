@@ -4,7 +4,7 @@
 
 ## 安装与启用
 
-发布到 npm 后，推荐按版本安装预构建包：
+推荐通过 DSH 的插件管理命令，从 npm 按版本安装预构建包。先在启动 DSH 的同一个终端设置 API key；Windows PowerShell 使用 `$env:TYPESAFE_API_KEY = 'your-key'`，Bash 示例：
 
 ```bash
 export TYPESAFE_API_KEY='your-key'
@@ -12,7 +12,7 @@ npx @deepseek-ai/dsh@0.2.1-alpha.2 plugin --profile web add jev-review@0.0.101
 npx @deepseek-ai/dsh@0.2.1-alpha.2 web
 ```
 
-npm 发布状态见 [npm 包页面](https://www.npmjs.com/package/jev-review)。也可以下载 [GitHub Release](https://github.com/aimmetal-tech/jev-review/releases) 的预构建 `.tgz`；校验、解压与依赖安装见 [发布说明](../docs/RELEASING.md)。这两种安装方式无需手动构建。
+省略插件包的 `@0.0.101` 可安装 npm 的最新发布版本。可用版本见 [npm 包页面](https://www.npmjs.com/package/jev-review)。也可以下载 [GitHub Release](https://github.com/aimmetal-tech/jev-review/releases) 的预构建 `.tgz`；校验、解压与依赖安装见 [发布说明](../docs/RELEASING.md)。这两种安装方式无需手动构建。
 
 从源码安装时，在项目根目录生成可供 dsh 加载的 JavaScript：
 
