@@ -131,7 +131,7 @@ test("Cordis passes ordinary main-agent streams through unchanged", async t => {
   await ctx.plugin(LlmRuntime);
   let delegated: GenerateOptions | undefined;
   ctx.on("llm/stream", options => { delegated = options; return original(); });
-  await ctx.plugin(Jev, {});
+  await ctx.plugin(Jev, { llmApiKeyEnv: "JEV_UNIT_MISSING_LLM_KEY", sandboxMode: "off" });
   t.mock.method(globalThis, "fetch", async () => { assert.fail("Main model requests must not reach Jev"); });
   const options: GenerateOptions = { provider: "main-provider", model: "main-model", messages: [] };
   assert.deepEqual(await collect(ctx.llm.stream(options)), await collect(original()));
@@ -142,7 +142,7 @@ test("Cordis intercepts only the native Auto request and unloading restores the 
   await ctx.plugin(LlmRuntime);
   let delegated = 0;
   ctx.on("llm/stream", () => { delegated++; return original(); });
-  const fiber = await ctx.plugin(Jev, { apiKeyEnv: "JEV_TEST_KEY" });
+  const fiber = await ctx.plugin(Jev, { apiKeyEnv: "JEV_TEST_KEY", llmApiKeyEnv: "JEV_UNIT_MISSING_LLM_KEY", sandboxMode: "off" });
   const saved = process.env.JEV_TEST_KEY; process.env.JEV_TEST_KEY = "unused";
   t.after(() => { if (saved === undefined) delete process.env.JEV_TEST_KEY; else process.env.JEV_TEST_KEY = saved; });
   // Key was deliberately absent at activation: native denial uses dsh's approval flow.
@@ -156,7 +156,7 @@ test("shadow retains the original native enforcing reviewer", async t => {
   const ctx = new Context(); t.after(() => ctx.fiber.dispose());
   await ctx.plugin(LlmRuntime);
   ctx.on("llm/stream", () => original());
-  await ctx.plugin(Jev, { mode: "shadow", apiKeyEnv: "JEV_MISSING_TEST_KEY" });
+  await ctx.plugin(Jev, { mode: "shadow", apiKeyEnv: "JEV_MISSING_TEST_KEY", llmApiKeyEnv: "JEV_UNIT_MISSING_LLM_KEY", sandboxMode: "off" });
   assert.deepEqual(await collect(ctx.llm.stream(request())), await collect(original()));
 });
 test("dsh configuration validates thresholds and model at activation", async t => {
@@ -171,7 +171,7 @@ test("disposing the adapter aborts and drains an in-flight Jev request", async t
   await ctx.plugin(LlmRuntime);
   const saved = process.env.JEV_DISPOSE_TEST_KEY; process.env.JEV_DISPOSE_TEST_KEY = "test-key";
   t.after(() => { if (saved === undefined) delete process.env.JEV_DISPOSE_TEST_KEY; else process.env.JEV_DISPOSE_TEST_KEY = saved; });
-  const fiber = await ctx.plugin(Jev, { apiKeyEnv: "JEV_DISPOSE_TEST_KEY" });
+  const fiber = await ctx.plugin(Jev, { apiKeyEnv: "JEV_DISPOSE_TEST_KEY", llmApiKeyEnv: "JEV_UNIT_MISSING_LLM_KEY", sandboxMode: "off" });
   const started = Promise.withResolvers<void>();
   let aborted = false;
   t.mock.method(globalThis, "fetch", async (_url: unknown, init: RequestInit) => new Promise<Response>((_resolve, reject) => {

@@ -41,7 +41,7 @@ async function harness(t: TestContext) {
   const saved = process.env.JEV_NATIVE_TEST_KEY;
   process.env.JEV_NATIVE_TEST_KEY = "test-key";
   t.after(() => { if (saved === undefined) delete process.env.JEV_NATIVE_TEST_KEY; else process.env.JEV_NATIVE_TEST_KEY = saved; });
-  const jev = await ctx.plugin(Jev, { apiKeyEnv: "JEV_NATIVE_TEST_KEY" });
+  const jev = await ctx.plugin(Jev, { apiKeyEnv: "JEV_NATIVE_TEST_KEY",llmApiKeyEnv:"JEV_NATIVE_MISSING_LLM_KEY",sandboxMode:"off" });
 
   let runs = 0;
   ctx.tools.register(defineContentToolFixture({
@@ -111,6 +111,9 @@ test("native ask policy presents Jev denial and grants only explicit one-shot ap
   t.mock.method(globalThis, "fetch", async () => apiResponse("authorized", "sensitive"));
   let asks = 0;
   h.ctx.on("approval/request", async () => { asks++; return "allowed-once"; });
+  assert.equal((await h.call()).isError,true);
+  assert.equal((await h.call()).isError,true);
+  assert.equal(asks,0);
   const result = await h.call();
   assert.equal(result.isError, false, JSON.stringify({ result, asks }));
   assert.equal(h.runs(), 1);

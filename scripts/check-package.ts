@@ -33,6 +33,7 @@ try {
   for (const path of ["package.json", "README.md", "LICENSE", "CHANGELOG.md", "docs/RELEASING.md", "src/adapters/pi.ts", "src/adapters/dsh.ts", "src/reviewer.ts", "src/l1.ts", "dist/dsh.js", "dsh/cordis.patch.yml", "dsh/icon.svg", "dsh/locale/en.json", "dsh/locale/zh.json"]) {
     assert.ok(paths.has(path), `Missing package resource: ${path}`);
   }
+  for(const path of ["src/llm.ts","src/recovery.ts","src/sandbox.ts","src/sandbox-worker.ts","src/adapters/dsh-sandbox.ts"])assert.ok(paths.has(path),`Missing sandbox resource: ${path}`);
   for (const path of paths) {
     assert.ok(!/(?:^|\/)(?:node_modules|test|scripts|\.github|\.git|\.env(?:\.[^/]*)?)(?:\/|$)/.test(path), `Unexpected package file: ${path}`);
   }

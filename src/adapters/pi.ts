@@ -2,13 +2,20 @@ import { randomUUID } from "node:crypto";
 import { resolve } from "node:path";
 import type { ExtensionAPI, ExtensionContext } from "@earendil-works/pi-coding-agent";
 import { createReadScope, type L1Context, type L1Mode, type ReadScope } from "../l1.ts";
+import { DockerSandbox, SANDBOX_TOOL_NAMES, sandboxSchema, sandboxBoundary, type SandboxPlan } from "../sandbox.ts";
+import { RecoveryBudget } from "../recovery.ts";
 import { collectUserContext, readConfig, review, type Mode, type Operation, type Verdict } from "../reviewer.ts";
 
 export default function jevReview(pi: ExtensionAPI) {
   let config: ReturnType<typeof readConfig> | undefined;
   try { config = readConfig(process.env); } catch { /* Keep the gate installed when config is invalid. */ }
   const stats = { calls: 0, allow: 0, deny: 0, review: 0, inputTokens: 0, outputTokens: 0, totalMs: 0 };
-  const layers = { l1Candidates: 0, l1Allows: 0, jevRequests: 0, localFallbacks: 0, comparedAllow: 0, comparedDeny: 0, comparedReview: 0 };
+  const layers = { l1Candidates: 0, l1Allows: 0, jevRequests: 0, llmRequests: 0, sandboxAllows: 0, humanRequests: 0, localFallbacks: 0, comparedAllow: 0, comparedDeny: 0, comparedReview: 0 };
+  const sandbox=config?new DockerSandbox(config.sandbox):undefined;
+  const recovery=new RecoveryBudget();
+  const owned=new Map<string,{parameters:unknown;source?:string;description:string}>();
+  const workspaces=new Map<string,string>();
+  const pending=new Map<string,{plan:SandboxPlan;approved:boolean;epoch:number;session:string}>();
   let last: Verdict | undefined;
   let epoch = 0;
   interface Snapshot { session: string; cwd: string; users: { id: string; value: string; text?: string }[] }
@@ -22,7 +29,7 @@ export default function jevReview(pi: ExtensionAPI) {
   }
   let grant: Grant | undefined;
 
-  function revoke() { epoch++; grant = undefined; }
+  function revoke() { epoch++; grant = undefined; recovery.reset(); pending.clear(); }
   function snapshotContext(ctx: ExtensionContext): Snapshot {
     const users = ctx.sessionManager.getBranch().flatMap(entry => {
       if (entry.type !== "message" || entry.message.role !== "user") return [];
@@ -60,7 +67,7 @@ export default function jevReview(pi: ExtensionAPI) {
     ctx.ui.setStatus("jev-review", config ? `Jev: ${config.mode}` : "Jev: invalid config (blocked)");
   }
 
-  async function gate(operation: Operation, ctx: ExtensionContext): Promise<{ block: true; reason: string } | undefined> {
+  async function gate(operation: Operation, ctx: ExtensionContext, toolCallId?:string): Promise<{ block: true; reason: string } | undefined> {
     if (!config) return { block: true, reason: "Invalid Jev configuration. Fix the JEV_* environment variables and reload the extension." };
     const callConfig = config;
     if (ctx.signal?.aborted) return { block: true, reason: "Review cancelled" };
@@ -72,6 +79,18 @@ export default function jevReview(pi: ExtensionAPI) {
       captured = { ...operation, input: JSON.parse(snapshot) };
     } catch { return { block: true, reason: "Tool input cannot be serialized for review" }; }
     const context = collectUserContext(ctx.sessionManager.getBranch());
+    let execution: {plan:SandboxPlan;approved:boolean;epoch:number;session:string}|undefined;
+    const preparationEpoch=epoch;
+    const installed=owned.get(operation.tool),visible=pi.getAllTools().find(t=>t.name===operation.tool);
+    if(sandbox&&installed&&(visible?.parameters===installed.parameters||Boolean(installed.source&&visible?.sourceInfo?.path===installed.source))) {
+      try {
+        const workspace=workspaces.get(ctx.sessionManager.getSessionId());if(!workspace)return {block:true,reason:"Standing sandbox workspace is not initialized"};
+        const plan=await sandbox.prepare(captured,false,workspace);
+        if(!plan)return {block:true,reason:"Unsupported sandbox operation"};
+        if(preparationEpoch!==epoch||ctx.signal?.aborted)return {block:true,reason:"Sandbox operation was cancelled before review"};
+        execution={plan,approved:false,epoch,session:ctx.sessionManager.getSessionId()};if(toolCallId)pending.set(toolCallId,execution);
+      } catch { return {block:true,reason:"Sandbox is unavailable or the request is invalid. Fix the sandbox or choose a safer supported operation; execution was not performed."}; }
+    }
     const currentGrant = grant;
     const provenance = pi.getAllTools().find(tool => tool.name === operation.tool)?.sourceInfo;
     const l1: L1Context | undefined = currentGrant && provenance && validGrant(ctx, currentGrant) ? {
@@ -80,8 +99,9 @@ export default function jevReview(pi: ExtensionAPI) {
     } : undefined;
     const callEpoch = epoch;
     const started = Date.now();
-    const verdict = await review({ operation: captured, ...context }, callConfig, fetch, ctx.signal, {
-      l1, onJevRequest: () => { layers.jevRequests++; },
+    const verdict = await review({ operation: captured, ...context,...(execution?{sandboxBoundary:sandboxBoundary(execution.plan)}:{}) }, callConfig, fetch, ctx.signal, {
+      l1, onJevRequest: () => { layers.jevRequests++; },onLLMRequest:()=>{layers.llmRequests++;},
+      sandbox:execution?{allows:()=>execution!.epoch===epoch&&Boolean(sandbox?.canRun(execution!.plan,captured))}:undefined,
     });
     last = verdict;
     stats.calls++;
@@ -113,10 +133,14 @@ export default function jevReview(pi: ExtensionAPI) {
       return undefined;
     }
     if (verdict.decision === "allow") {
+      recovery.reset();
+      if(execution)execution.approved=true;
+      if(verdict.source==="sandbox")layers.sandboxAllows++;
       if (verdict.source === "l1") layers.l1Allows++;
       return undefined;
     }
-    if (verdict.decision === "deny") return { block: true, reason: `Jev: ${verdict.reason}` };
+    const recoveryResult=callConfig.mode==="manual"?{human:true,reason:verdict.reason}:recovery.outcome(verdict,callConfig.humanAfter);
+    if (verdict.decision === "deny" || !recoveryResult.human) return { block: true, reason: `Auto review: ${recoveryResult.reason}` };
     if (!ctx.hasUI) return { block: true, reason: `Jev: ${verdict.reason}. Interactive approval is required.` };
 
     // Serialize dialogs so concurrent calls do not replace each other's approval UI.
@@ -124,6 +148,7 @@ export default function jevReview(pi: ExtensionAPI) {
       if (changedOrCancelled()) return { block: true, reason: "Operation changed or review was cancelled" };
       let approved = false;
       try {
+        layers.humanRequests++;
         approved = await ctx.ui.confirm(
           "Jev: approve this operation once?",
           `${verdict.reason}\n\n${JSON.stringify(captured, null, 2)}`,
@@ -131,6 +156,7 @@ export default function jevReview(pi: ExtensionAPI) {
         );
       } catch { /* Closed/failed dialogs never grant approval. */ }
       if (changedOrCancelled()) return { block: true, reason: "Operation changed or review was cancelled" };
+      if(approved){recovery.reset();if(execution)execution.approved=true;}
       return approved ? undefined : { block: true, reason: "Jev: operation was not approved by the user" };
     });
   }
@@ -147,11 +173,30 @@ export default function jevReview(pi: ExtensionAPI) {
     status(ctx);
     if (!config) ctx.ui.notify("Jev configuration is invalid; tool calls will be blocked.", "error");
     else if (config.mode === "shadow") ctx.ui.notify("Jev shadow mode observes decisions and does not enforce them.", "warning");
-    else if (!config.apiKey && config.mode !== "manual") ctx.ui.notify("Set TYPESAFE_API_KEY to enable Jev. Tool calls currently require manual approval.", "warning");
+    else if (!config.apiKey && !config.llm.apiKey && config.mode !== "manual") ctx.ui.notify("Review models are not configured. Verified standing sandbox operations remain available; unresolved exceptions are rejected before last-resort manual approval.", "warning");
+    if(config?.sandbox.mode!=="off"&&sandbox) {
+      workspaces.set(ctx.sessionManager.getSessionId(),ctx.sessionManager.getCwd());
+      for(const original of pi.getAllTools()) {
+        if(!SANDBOX_TOOL_NAMES.includes(original.name as typeof SANDBOX_TOOL_NAMES[number])||owned.has(original.name)||original.sourceInfo?.source!=="builtin")continue;
+        const parameters=sandboxSchema(original.parameters),description=`${original.description}\nExecution is confined by Jev's Docker sandbox. Shell cwd is /workspace; filesystem paths use host paths. `+
+          "Request only specific read_roots/writable_roots or network_access with justification when wider access is necessary; extra roots are mounted at /extra/<index>.";
+        owned.set(original.name,{parameters,description});
+        pi.registerTool({name:original.name,label:original.name,description,parameters,
+          async execute(callId,params,signal,_update,executionContext) {
+            const entry=pending.get(callId);pending.delete(callId);
+            if(!entry||entry.epoch!==epoch||entry.session!==executionContext.sessionManager.getSessionId())throw new Error("Sandbox permission binding expired; the tool was not executed");
+            const operation={...entry.plan.operation,input:params as Record<string,unknown>,cwd:executionContext.cwd};
+            const result=await sandbox.execute(entry.plan,operation,entry.approved,signal);
+            if(result.isError)throw new Error(result.text||"Sandbox command failed");
+            return {content:[{type:"text",text:result.text}],details:{sandbox:true,exitCode:result.exitCode}};
+          }});
+        owned.get(original.name)!.source=pi.getAllTools().find(t=>t.name===original.name)?.sourceInfo?.path;
+      }
+    }
   });
 
   const invalidate = async () => { revoke(); };
-  pi.on("session_shutdown", invalidate);
+  pi.on("session_shutdown", async()=>{revoke();await sandbox?.dispose();});
   pi.on("session_before_switch", invalidate);
   pi.on("session_before_fork", invalidate);
   pi.on("session_before_tree", invalidate);
@@ -174,7 +219,7 @@ export default function jevReview(pi: ExtensionAPI) {
 
   pi.on("tool_call", async (event, ctx) => {
     const description = pi.getAllTools().find(tool => tool.name === event.toolName)?.description;
-    return gate({ tool: event.toolName, input: event.input, cwd: ctx.cwd, description, source: "agent" }, ctx);
+    return gate({ tool: event.toolName, input: event.input, cwd: ctx.cwd, description, source: "agent" }, ctx,event.toolCallId);
   });
 
   pi.on("user_bash", async (event, ctx) => {

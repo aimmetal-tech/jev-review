@@ -1,5 +1,7 @@
 import { Buffer } from "node:buffer";
 import { classifyL1, isProtectedPath, type L1Context, type L1Mode } from "./l1.ts";
+import { readLLMConfig, reviewLLM, type LLMConfig } from "./llm.ts";
+import { readSandboxConfig, type SandboxConfig } from "./sandbox.ts";
 
 export type Mode = "auto" | "manual" | "shadow";
 export interface Config {
@@ -12,6 +14,9 @@ export interface Config {
   timeoutMs: number;
   maxStateBytes: number;
   reviewUserBash: boolean;
+  llm: LLMConfig;
+  sandbox: SandboxConfig;
+  humanAfter: number;
 }
 export interface Operation {
   tool: string;
@@ -28,6 +33,7 @@ export interface ReviewState {
   incompleteContext: boolean;
   parentRequests?: string[];
   constraints?: string[];
+  sandboxBoundary?: { backend: "docker"; mode: string; workspaceRoot: string; readRoots: string[]; writableRoots: string[]; networkAccess: boolean };
 }
 export interface ChoiceAnswer {
   choice: string;
@@ -37,7 +43,8 @@ export interface ChoiceAnswer {
 export interface Verdict {
   decision: "allow" | "deny" | "review";
   reason: string;
-  source: "local" | "l1" | "jev";
+  source: "local" | "l1" | "jev" | "llm" | "sandbox";
+  alternative?: string;
   l1Candidate?: string;
   model?: string;
   authorization?: ChoiceAnswer;
@@ -109,6 +116,9 @@ export function readConfig(env: NodeJS.ProcessEnv): Config {
     timeoutMs: number("JEV_TIMEOUT_MS", 5000, 100, 60000, true),
     maxStateBytes: number("JEV_MAX_STATE_BYTES", 32768, 1024, 131072, true),
     reviewUserBash: reviewUserBash === "true",
+    llm: readLLMConfig(env),
+    sandbox: readSandboxConfig(env),
+    humanAfter: number("JEV_HUMAN_AFTER", 3, 1, 10, true),
   };
 }
 
@@ -195,7 +205,7 @@ export function isSensitivePath(operation: Operation): boolean {
   return isProtectedPath(operation.cwd, path);
 }
 
-export interface ReviewOptions { l1?: L1Context; onJevRequest?: () => void }
+export interface ReviewOptions { l1?: L1Context; onJevRequest?: () => void; onLLMRequest?: () => void; sandbox?: { allows(): boolean } }
 
 export async function review(
   state: ReviewState,
@@ -208,14 +218,27 @@ export async function review(
   const fallback = (reason: string): Verdict => ({ decision: "review", reason, source: "local", ...(l1Candidate ? { l1Candidate } : {}) });
   if (signal?.aborted) return fallback("Review cancelled");
   if (config.mode === "manual") return fallback("Manual approval mode");
-  if (isSensitivePath(state.operation)) return fallback("Protected configuration or credential path");
+  if (config.mode === "auto" && options.sandbox) {
+    try { if (options.sandbox.allows()) return { decision: "allow", source: "sandbox", reason: "Operation will execute within verified standing sandbox permissions" }; }
+    catch { return fallback("Sandbox permission binding is invalid"); }
+  }
+  const privatePath=state.operation.input.path??state.operation.input.file_path;
+  const protectedReview=state.sandboxBoundary ? typeof privatePath==="string"&&/(?:^|[/\\])(?:\.env(?:\.[^/\\]*)?|\.ssh|\.aws|\.gnupg|\.codex|\.pi|\.dsh|\.docker)(?:$|[/\\])/i.test(privatePath) : isSensitivePath(state.operation);
+  if (protectedReview) return fallback("Protected configuration or credential path");
   if (state.incompleteContext) return fallback("User context includes unsupported or missing content");
-  if (!config.apiKey) return fallback("TYPESAFE_API_KEY is not configured");
   let serialized: string;
   try { serialized = JSON.stringify(state); } catch { return fallback("Operation cannot be serialized for review"); }
   if (Buffer.byteLength(serialized, "utf8") > config.maxStateBytes) {
     return fallback("Review context exceeds JEV_MAX_STATE_BYTES; no content was truncated");
   }
+  if([config.apiKey,config.llm.apiKey].some(key=>key&&serialized.includes(key)))return fallback("Known reviewer credentials cannot be forwarded for automatic review");
+  const captured:ReviewState=JSON.parse(serialized);
+  const finalReview = async (verdict: Verdict): Promise<Verdict> => {
+    if (verdict.decision === "allow" || signal?.aborted || !config.llm.apiKey) return verdict;
+    const last = await reviewLLM(captured, config.llm, fetcher, signal, options.onLLMRequest);
+    return { ...last, ...(l1Candidate ? { l1Candidate } : {}) };
+  };
+  if (!config.apiKey) return finalReview(fallback("TYPESAFE_API_KEY is not configured"));
   if (config.l1Mode !== "off") {
     const local = await classifyL1(state.operation, options.l1);
     if (signal?.aborted) return fallback("Review cancelled");
@@ -235,17 +258,17 @@ export async function review(
     const response = await fetcher(ENDPOINT, {
       method: "POST",
       headers: { "Authorization": `Bearer ${config.apiKey}`, "Content-Type": "application/json" },
-      body: JSON.stringify({ model: config.model, state, questions: QUESTIONS }),
+      body: JSON.stringify({ model: config.model, state:captured, questions: QUESTIONS }),
       signal: controller.signal,
       redirect: "error",
     });
     if (!response.ok) {
       await response.body?.cancel();
-      return fallback(`Jev HTTP ${response.status}; automatic approval unavailable`);
+      return finalReview(fallback(`Jev HTTP ${response.status}; automatic approval unavailable`));
     }
     // Bound response memory; timer also covers reading the response body.
     const reader = response.body?.getReader();
-    if (!reader) return fallback("Jev returned an empty response");
+    if (!reader) return finalReview(fallback("Jev returned an empty response"));
     const chunks: Uint8Array[] = [];
     let size = 0;
     while (true) {
@@ -254,15 +277,15 @@ export async function review(
       size += chunk.value.byteLength;
       if (size > 65536) {
         await reader.cancel();
-        return fallback("Jev response exceeded the size limit");
+        return finalReview(fallback("Jev response exceeded the size limit"));
       }
       chunks.push(chunk.value);
     }
-    if (controller.signal.aborted) return fallback(signal?.aborted ? "Review cancelled" : "Jev review timed out");
-    return { ...parseVerdict(JSON.parse(Buffer.concat(chunks).toString("utf8")), config), ...(l1Candidate ? { l1Candidate } : {}) };
+    if (controller.signal.aborted) return finalReview(fallback(signal?.aborted ? "Review cancelled" : "Jev review timed out"));
+    return finalReview({ ...parseVerdict(JSON.parse(Buffer.concat(chunks).toString("utf8")), config), ...(l1Candidate ? { l1Candidate } : {}) });
   } catch {
     // Never expose provider response bodies, credentials or exception text.
-    return fallback(signal?.aborted ? "Review cancelled" : controller.signal.aborted ? "Jev review timed out" : "Jev request failed or returned an invalid response");
+    return finalReview(fallback(signal?.aborted ? "Review cancelled" : controller.signal.aborted ? "Jev review timed out" : "Jev request failed or returned an invalid response"));
   } finally {
     clearTimeout(timer);
     signal?.removeEventListener("abort", cancel);

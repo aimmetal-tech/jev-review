@@ -16,10 +16,10 @@ function apiResponse(authorization = "authorized", risk = "routine") {
   }, usage: { input_tokens: 500, output_tokens: 30 } }));
 }
 function harness(t: TestContext, env: Record<string, string> = {}, hasUI = false) {
-  const names = new Set([...Object.keys(process.env).filter(k => k.startsWith("JEV_")), "TYPESAFE_API_KEY", ...Object.keys(env)]);
+  const names = new Set([...Object.keys(process.env).filter(k => k.startsWith("JEV_")), "TYPESAFE_API_KEY", "MIMO_TP_KEY", ...Object.keys(env)]);
   const saved = Object.fromEntries([...names].map(k => [k, process.env[k]]));
   for (const name of names) delete process.env[name];
-  Object.assign(process.env, { TYPESAFE_API_KEY: "test-key", ...env });
+  Object.assign(process.env, { TYPESAFE_API_KEY: "test-key", JEV_SANDBOX_MODE:"off",...env });
   t.after(() => { for (const [key, value] of Object.entries(saved)) { if (value === undefined) delete process.env[key]; else process.env[key] = value; } });
   const handlers = new Map<string, (event: any, ctx: any) => Promise<any>>();
   const commands = new Map<string, any>();
@@ -97,7 +97,12 @@ test("UI approval is scoped to one operation and denial blocks it", async t => {
   t.mock.method(globalThis, "fetch", async () => apiResponse("authorized", "sensitive"));
   let approvals = 0;
   t.mock.method(h.ctx.ui, "confirm", async (_title: string, message: string) => { approvals++; assert.match(message, /git status/); return approvals === 1; });
+  assert.equal((await h.call()).block, true);
+  assert.equal((await h.call()).block, true);
+  assert.equal(approvals,0);
   assert.equal(await h.call(), undefined);
+  assert.equal((await h.call()).block, true);
+  assert.equal((await h.call()).block, true);
   assert.equal((await h.call()).block, true);
   assert.equal(approvals, 2);
 });
@@ -167,7 +172,7 @@ test("opt-in user shell review returns a blocked BashResult", async t => {
   t.mock.method(globalThis, "fetch", async () => apiResponse("authorized", "destructive"));
   const result = await h.handlers.get("user_bash")!({ command: "rm -rf data", cwd: "/project" }, h.ctx);
   assert.equal(result.result.exitCode, 1);
-  assert.match(result.result.output, /Interactive approval/);
+  assert.match(result.result.output, /safer operation/);
 });
 
 test("UI-confirmed read tasks skip Jev only in auto/enforce and expose separate counters", async t => {

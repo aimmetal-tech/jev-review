@@ -12,7 +12,7 @@
 
 两个适配器共用审查核心，但保留各自宿主的审批机制：Pi 拦截工具事件；DSH 接管原生 Auto review 的模型请求，由原生插件继续管理工具审批与人工确认。主 Agent 的模型配置不由本项目替换。
 
-Jev 接口使用结构化 Choice 决策，同一次请求评估授权和风险。模型故障、上下文不完整或无法可靠判断时，进入人工审批或阻止执行；不得静默自动放行。本项目是执行前审批插件，不是操作系统沙箱。成本、延迟与分类质量的描述必须区分文档估算、模拟测试和真实 API 测量。
+Jev 接口使用结构化 Choice 决策，同一次请求评估授权和风险。受管操作在真实 Docker 沙箱站立权限内自动执行；越界先 Jev，再独立 LLM，未解决先拒绝并提示替代路径，连续达到恢复预算后才人工。不能可靠判断、取消、执行绑定或后端失败时不得静默放行。执行隔离只覆盖插件拥有的工具体，不把整个宿主服务或未受管工具称为沙箱。成本、延迟与分类质量必须区分文档估算、模拟测试和真实 API 测量。
 
 ## 技术栈
 
@@ -20,7 +20,7 @@ Jev 接口使用结构化 Choice 决策，同一次请求评估授权和风险�
 | --- | --- |
 | 运行环境 | Node.js ≥ 22.19，npm，原生 ESM（`type: module`） |
 | 语言 | TypeScript，`strict`，`NodeNext` 模块解析；源码使用显式 `.ts` 导入 |
-| 共用审查器 | Node.js 内置 API、文件元数据检查、`fetch`、`AbortController`；L1 确定性规则与 L2 TypeSafe Jev 官方接口 |
+| 共用审查器 | Node.js 内置 API、Docker CLI、文件元数据检查、`fetch`、`AbortController`；站立沙箱权限、Jev 与 OpenAI 兼容 LLM |
 | Pi 适配 | Pi Extension API；`src/adapters/pi.ts` 为入口，宿主类型导入在运行时擦除 |
 | DSH 适配 | Cordis 插件与 `llm/stream` middleware、Schemastery 配置 schema、DSH 原生 Auto review |
 | Lint | **Oxlint**，配置为 `.oxlintrc.json`；警告和错误均使检查失败 |
@@ -58,9 +58,14 @@ jev-review/
 |-- src/
 |   |-- reviewer.ts             # Jev 客户端、授权/风险规则、配置与判定
 |   |-- l1.ts                   # 可信工具、只读范围与规范路径的本地分类
+|   |-- llm.ts                  # 独立最终审查的 JSON 协议、配置与故障回退
+|   |-- recovery.ts             # 拒绝后恢复与延迟人工预算
+|   |-- sandbox.ts              # Docker 执行、权限范围、精确一次性绑定与清理
+|   |-- sandbox-worker.ts       # 容器内受管文件、命令与 Node 代码执行
 |   `-- adapters/
 |       |-- pi.ts               # Pi 工具拦截、人工审批与 /jev 命令
-|       `-- dsh.ts              # DSH 原生审查协议转换与 Cordis 生命周期
+|       |-- dsh.ts              # DSH 原生审查协议转换与 Cordis 生命周期
+|       `-- dsh-sandbox.ts      # DSH 受管工具、沙箱证明、恢复预算与执行绑定
 |-- dsh/
 |   |-- README.md               # DSH 安装、配置、兼容版本与审批边界
 |   |-- cordis.patch.yml        # 原生 Auto review 与 Jev 适配器的插件行
@@ -71,6 +76,9 @@ jev-review/
 |-- test/
 |   |-- reviewer.test.ts        # 配置、判定、上下文、路径与 API 故障回退
 |   |-- l1.test.ts              # L1 分类、范围、链接、观察与执行档边界
+|   |-- llm.test.ts             # 最终模型协议、顺序、隐私、故障与严格校验
+|   |-- sandbox.test.ts         # 配置与真实文件/网络/代码/取消隔离
+|   |-- execution.test.ts       # 真实 Pi/DSH 沙箱内零模型与越界双模型链路
 |   |-- extension.test.ts       # Pi 事件、任务授权生命周期、交互、取消与参数变化
 |   |-- dsh.test.ts             # DSH 协议转换与 Cordis middleware
 |   |-- dsh-native.test.ts      # 真实 DSH 服务的原生审批链路
@@ -103,6 +111,8 @@ jev-review/
 
 - 改变公共行为时，同轮更新说明和有意义的行为测试。测试应验证结果与边界，不应仅复述实现。
 - L1 快速放行必须同时满足可信工具来源、UI 确认的当前任务授权及路径规则；不得从名称、描述或工具参数推导权限。默认 observe，DSH 因缺少身份与会话绑定不启用 L1；凭据/上下文/key 等前置回退优先于 L1。
+- 新沙箱站立权限与旧 L1 兼容模式分开：前者必须有真实受管执行体、固定工作区、明确挂载/网络范围和不可复用的许可绑定；模型或人工不能把后端失败解释为未隔离回退。默认连续未解决 3 次才人工，明确拒绝先让 Agent 寻找更安全替代。
+- Docker/真实执行测试不计作模型分类质量测量；新增依赖图需纳入实际 tarball 安装检查，确保 Pi 无运行时第三方依赖。
 - 修改共用核心或 DSH 入口后，重新构建 `dist/dsh.js`；直接编辑构建产物不会修复源码。
 - 修改包名、入口、导出或分发资源后，执行打包检查，确认包内包含 Pi 源码、DSH 构建产物、patch、locale、图标及许可证。
 - 不手工改写锁文件来伪装依赖变更，也不把 API key、真实凭据或私密操作样本放入源码、测试、文档或提交。
