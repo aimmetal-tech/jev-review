@@ -2,7 +2,7 @@ import { createHash } from "node:crypto";
 import type { Context } from "@deepseek-ai/cordis";
 import z from "@deepseek-ai/schemastery";
 import type { GenerateOptions, StreamChunk } from "@deepseek-ai/dsh-llm";
-import { readConfig, review, type Config as ReviewConfig, type ReviewState } from "./reviewer.ts";
+import { readConfig, review, type Config as ReviewConfig, type ReviewState } from "../reviewer.ts";
 
 export const name = "jev-auto-review";
 export const inject = ["llm"];

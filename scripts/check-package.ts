@@ -8,8 +8,9 @@ import { transform } from "esbuild";
 
 const root = process.cwd();
 const output = resolve(root, ".release");
+const npmCli = process.env.npm_execpath;
+if (!npmCli) throw new Error("Run package verification with npm run check:package");
 const temp = mkdtempSync(join(tmpdir(), "jev-review-package-"));
-const npm = process.platform === "win32" ? "npm.cmd" : "npm";
 
 function run(command: string, args: string[], cwd: string, capture = false): string {
   const result = spawnSync(command, args, { cwd, encoding: "utf8", stdio: capture ? "pipe" : "inherit" });
@@ -23,13 +24,13 @@ function run(command: string, args: string[], cwd: string, capture = false): str
 
 try {
   mkdirSync(output, { recursive: true });
-  const [packed] = JSON.parse(run(npm, ["pack", "--json", "--silent", "--pack-destination", output], root, true));
+  const [packed] = JSON.parse(run(process.execPath, [npmCli, "pack", "--json", "--silent", "--pack-destination", output], root, true));
   const metadata = JSON.parse(readFileSync(resolve(root, "package.json"), "utf8"));
   assert.equal(packed.name, "jev-review");
   assert.equal(packed.version, metadata.version);
   assert.equal(packed.filename, `jev-review-${metadata.version}.tgz`);
   const paths = new Set<string>(packed.files.map((file: { path: string }) => file.path));
-  for (const path of ["package.json", "README.md", "LICENSE", "CHANGELOG.md", "docs/RELEASING.md", "src/index.ts", "src/reviewer.ts", "dist/dsh.js", "dsh/cordis.patch.yml", "dsh/icon.svg", "dsh/locale/en.json", "dsh/locale/zh.json"]) {
+  for (const path of ["package.json", "README.md", "LICENSE", "CHANGELOG.md", "docs/RELEASING.md", "src/adapters/pi.ts", "src/adapters/dsh.ts", "src/reviewer.ts", "dist/dsh.js", "dsh/cordis.patch.yml", "dsh/icon.svg", "dsh/locale/en.json", "dsh/locale/zh.json"]) {
     assert.ok(paths.has(path), `Missing package resource: ${path}`);
   }
   for (const path of paths) {
@@ -44,7 +45,7 @@ try {
     .filter(([name]) => name.startsWith("@deepseek-ai/") || name === "@earendil-works/pi-coding-agent")
     .map(([name, version]) => `${name}@${version}`);
   // Install the actual tarball in a clean directory, without the project's dev tools.
-  run(npm, ["install", "--ignore-scripts", "--omit=dev", "--no-audit", "--no-fund", "--package-lock=false", tarball, ...hosts], temp);
+  run(process.execPath, [npmCli, "install", "--ignore-scripts", "--omit=dev", "--no-audit", "--no-fund", "--package-lock=false", tarball, ...hosts], temp);
   const installed = resolve(temp, "node_modules/jev-review");
   const smoke = await transform(readFileSync(resolve(root, "scripts/package-smoke.ts"), "utf8"), { loader: "ts", format: "esm", target: "node22" });
   writeFileSync(join(temp, "package-smoke.mjs"), smoke.code);
@@ -55,7 +56,7 @@ try {
   const fixtureCore = await transform(readFileSync(join(installed, "src/reviewer.ts"), "utf8"), { loader: "ts", format: "esm", target: "node22" });
   writeFileSync(join(temp, "fixture-reviewer.mjs"), fixtureCore.code);
   const nativeSource = readFileSync(resolve(root, "test/dsh-native.test.ts"), "utf8")
-    .replace('"../src/dsh.ts"', '"jev-review/dsh"')
+    .replace('"../src/adapters/dsh.ts"', '"jev-review/dsh"')
     .replace('"../src/reviewer.ts"', '"./fixture-reviewer.mjs"');
   const native = await transform(nativeSource, { loader: "ts", format: "esm", target: "node22" });
   writeFileSync(join(temp, "dsh-native-smoke.mjs"), native.code);

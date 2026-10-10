@@ -4,7 +4,7 @@ import { fileURLToPath } from "node:url";
 import { test } from "node:test";
 import { Context } from "@deepseek-ai/cordis";
 import LlmRuntime, { BlockAssembler, createUserMessage, type GenerateOptions, type StreamChunk } from "@deepseek-ai/dsh-llm";
-import * as Jev from "../src/dsh.ts";
+import * as Jev from "../src/adapters/dsh.ts";
 import { QUESTIONS, readConfig } from "../src/reviewer.ts";
 
 const native = await readFile(fileURLToPath(import.meta.resolve("@deepseek-ai/dsh-experimental-auto-review")), "utf8");

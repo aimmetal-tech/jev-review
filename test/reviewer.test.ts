@@ -100,7 +100,7 @@ test("manual mode, missing key, attachments and oversized state skip the API", a
   assert.match((await review({ ...state, userRequests: ["文".repeat(12000)] }, config, never)).reason, /exceeds/);
 });
 test("protected paths resolve relative to cwd and bypass remote disclosure", async () => {
-  for (const [cwd, path] of [["/project", ".env"], ["/project", "../.ssh/id_rsa"], ["/project/jev-review", "src/index.ts"], ["/project/pi-jev-review", "src/index.ts"]]) {
+  for (const [cwd, path] of [["/project", ".env"], ["/project", "../.ssh/id_rsa"], ["/project/jev-review", "src/adapters/pi.ts"], ["/project/pi-jev-review", "src/adapters/pi.ts"]]) {
     const verdict = await review({ ...state, operation: { ...state.operation, tool: "read", cwd, input: { path } } }, config, async () => { assert.fail("Protected path must not reach the API"); });
     assert.match(verdict.reason, /Protected/);
   }

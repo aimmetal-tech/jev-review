@@ -30,7 +30,7 @@
   },
   "pi": {
     "extensions": [
-      "./src/index.ts"
+      "./src/adapters/pi.ts"
     ]
   },
   "scripts": {
@@ -38,7 +38,7 @@
     "lint:fix": "oxlint --fix --deny-warnings src test scripts",
     "check": "tsc --noEmit",
     "test": "node --experimental-strip-types test/reviewer.test.ts && node --experimental-strip-types test/extension.test.ts && node --experimental-strip-types test/dsh.test.ts && node --experimental-strip-types test/dsh-native.test.ts && node --experimental-strip-types test/release.test.ts",
-    "build": "esbuild src/dsh.ts --bundle --platform=node --format=esm --packages=external --outfile=dist/dsh.js",
+    "build": "esbuild src/adapters/dsh.ts --bundle --platform=node --format=esm --packages=external --outfile=dist/dsh.js",
     "verify": "npm run lint && npm run check && npm test",
     "prepack": "npm run build",
     "check:package": "node --experimental-strip-types scripts/check-package.ts",

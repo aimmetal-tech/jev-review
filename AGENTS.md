@@ -21,7 +21,7 @@ Jev 接口使用结构化 Choice 决策，同一次请求评估授权和风险�
 | 运行环境 | Node.js ≥ 22.19，npm，原生 ESM（`type: module`） |
 | 语言 | TypeScript，`strict`，`NodeNext` 模块解析；源码使用显式 `.ts` 导入 |
 | 共用审查器 | Node.js 内置 API、`fetch`、`AbortController`；调用 TypeSafe Jev 官方接口 |
-| Pi 适配 | Pi Extension API；`src/index.ts` 为入口，宿主类型导入在运行时擦除 |
+| Pi 适配 | Pi Extension API；`src/adapters/pi.ts` 为入口，宿主类型导入在运行时擦除 |
 | DSH 适配 | Cordis 插件与 `llm/stream` middleware、Schemastery 配置 schema、DSH 原生 Auto review |
 | Lint | **Oxlint**，配置为 `.oxlintrc.json`；警告和错误均使检查失败 |
 | 类型检查 | TypeScript `tsc --noEmit`，与 Lint 分开执行 |
@@ -57,8 +57,9 @@ jev-review/
 |   `-- package-smoke.ts        # 已安装包的 Pi 加载与 DSH 导出验证
 |-- src/
 |   |-- reviewer.ts             # Jev 客户端、授权/风险规则、配置与判定
-|   |-- index.ts                # Pi 工具拦截、人工审批与 /jev 命令
-|   `-- dsh.ts                  # DSH 原生审查协议转换与 Cordis 生命周期
+|   `-- adapters/
+|       |-- pi.ts               # Pi 工具拦截、人工审批与 /jev 命令
+|       `-- dsh.ts              # DSH 原生审查协议转换与 Cordis 生命周期
 |-- dsh/
 |   |-- README.md               # DSH 安装、配置、兼容版本与审批边界
 |   |-- cordis.patch.yml        # 原生 Auto review 与 Jev 适配器的插件行
@@ -87,10 +88,10 @@ jev-review/
 | 新增、删除、移动文件或目录 | 更新本文件的结构树及职责说明；修正所有受影响的源码/测试导入和文档链接。若影响源码或测试发现，检查 `tsconfig.json.include`、Lint 路径和 `package.json.scripts.test`；若影响分发，检查 `files`、`exports` 和宿主入口。 |
 | 项目名、包名、仓库地址或许可证变化 | 同步 `package.json`、npm 生成的锁文件、`README.md`、本文件和 `LICENSE` 中对应的信息；包名变化还需更新 `dsh/cordis.patch.yml`、`dsh/README.md` 的模块名及安装路径。检查插件目录的路径保护规则和测试。 |
 | 共用判定策略、Jev 问题/API 格式、阈值、上下文或路径保护变化 | 同步 `src/reviewer.ts` 与 `test/reviewer.test.ts`；检查两个适配器的集成测试。更新 `README.md` 的规则、配置和数据边界；DSH 行为受影响时同步 `dsh/README.md`。 |
-| Pi 事件、命令、模式、交互或入口变化 | 同步 `src/index.ts`、`test/extension.test.ts`、`README.md`；入口或宿主依赖变化时同步 `package.json.pi`、依赖声明与锁文件。 |
-| DSH 配置、原生协议、审批映射或生命周期变化 | 同步 `src/dsh.ts`、`test/dsh.test.ts`、`test/dsh-native.test.ts`、`dsh/README.md`；插件默认配置变化时检查 `dsh/cordis.patch.yml`。确认 Pi 行为是否受共用核心影响。 |
+| Pi 事件、命令、模式、交互或入口变化 | 同步 `src/adapters/pi.ts`、`test/extension.test.ts`、`README.md`；入口或宿主依赖变化时同步 `package.json.pi`、依赖声明与锁文件。 |
+| DSH 配置、原生协议、审批映射或生命周期变化 | 同步 `src/adapters/dsh.ts`、`test/dsh.test.ts`、`test/dsh-native.test.ts`、`dsh/README.md`；插件默认配置变化时检查 `dsh/cordis.patch.yml`。确认 Pi 行为是否受共用核心影响。 |
 | DSH 兼容版本变化 | 同步 `package.json` 的开发依赖、peer 范围及锁文件，核对 `REVIEW_POLICY_SHA256` 和请求形状，运行原生审批链路测试，更新 `dsh/README.md` 的已验证版本。不得为通过测试而关闭协议校验。 |
-| 配置字段或默认值变化 | 检查 `src/reviewer.ts` 的环境变量、`src/dsh.ts` 的 Config schema、对应测试、两个 README 的配置表/示例及 patch 默认值。明确 Pi 环境变量与 DSH 行配置的区别，不假定它们自动互相覆盖。 |
+| 配置字段或默认值变化 | 检查 `src/reviewer.ts` 的环境变量、`src/adapters/dsh.ts` 的 Config schema、对应测试、两个 README 的配置表/示例及 patch 默认值。明确 Pi 环境变量与 DSH 行配置的区别，不假定它们自动互相覆盖。 |
 | DSH 标题、描述、图标或导出变化 | 对齐 `dsh/locale/en.json` 与 `zh.json` 的语义；检查 `icon.svg`、`package.json.icon`、资源 `exports`、`files` 与 bundle patch。 |
 | 依赖、运行版本、Lint/类型检查/构建脚本变化 | 使用 npm 更新并提交 `package-lock.json`；同步 `package.json`、相应工具配置、两个 README 中相关命令及本文件的技术栈/检查点。保持 `engines` 与实际使用的 API 相容。 |
 | 新增、删除或重命名测试文件 | 同步 `package.json.scripts.test`，避免测试未被执行；更新本文件的结构树与覆盖说明，以及文档中引用的测试数量或覆盖范围。 |

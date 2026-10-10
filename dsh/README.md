@@ -31,7 +31,7 @@ npx @deepseek-ai/dsh@0.2.1-alpha.2 web
 
 已安装 dsh 的环境可直接使用 `dsh plugin --profile web add ...` 和 `dsh web`。Bundle 同时声明原生 `auto-review` 行和 `jev-auto-review` 适配行，**安装不会替用户切换会话权限**。在当前会话选择 Auto review，或使用原生 `/permission auto`，才会开始审查工具调用。已有安装更新本地包后应重启 dsh，以加载新的 JavaScript 模块。
 
-项目与包名均为 `jev-review`：Pi 加载 `src/index.ts`；dsh 加载独立导出 `jev-review/dsh`（`dist/dsh.js`）。dsh 入口使用 Cordis 和 Schemastery，Jev HTTP 客户端和决策代码与 Pi 共用。
+项目与包名均为 `jev-review`：Pi 加载 `src/adapters/pi.ts`；dsh 加载独立导出 `jev-review/dsh`（`dist/dsh.js`）。dsh 入口使用 Cordis 和 Schemastery，Jev HTTP 客户端和决策代码与 Pi 共用。
 
 ## 接入方式
 

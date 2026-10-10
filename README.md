@@ -4,6 +4,8 @@
 
 Pi 入口可由 Pi 直接加载，无运行时第三方依赖。需要 Node.js ≥ 22.19。
 
+宿主适配器分别位于 `src/adapters/pi.ts` 和 `src/adapters/dsh.ts`，共用 `src/reviewer.ts` 中的 Jev 请求与判定逻辑。
+
 也提供 **DeepSeek Harness（dsh）适配器**，接管原生 Auto review 的模型请求；安装和配置见 [dsh 使用说明](dsh/README.md)。Pi 入口不导入 dsh 运行时。
 
 ## npm 安装与启用
@@ -55,7 +57,7 @@ npx @deepseek-ai/dsh@0.2.1-alpha.2 web
 
 ```bash
 pi install /absolute/path/to/jev-review
-pi -e /absolute/path/to/jev-review/src/index.ts
+pi -e /absolute/path/to/jev-review/src/adapters/pi.ts
 ```
 
 第一条命令持久安装，第二条只在本次 Pi 启动时加载。Release 附件已包含 DSH 构建产物；下载、校验、DSH 安装及维护者发布步骤见 [发布说明](docs/RELEASING.md)。版本变更见 [更新日志](CHANGELOG.md)。

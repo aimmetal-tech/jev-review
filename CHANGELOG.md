@@ -4,6 +4,9 @@
 
 ## [Unreleased]
 
+- 将 Pi 和 DSH 源码入口整理到 `src/adapters/pi.ts` 与 `src/adapters/dsh.ts`，同步包入口、构建、测试和说明；审查策略及 `jev-review/dsh` 导出不变。直接加载旧 Pi 源码路径的用户需改用新路径。
+- 打包检查通过 Node 启动 npm CLI，修复 Windows 上直接启动 `npm.cmd` 导致的 `EINVAL` 错误。
+
 ## [0.0.101] - 2026-10-10
 
 - npm 发布仅使用 GitHub Actions Trusted Publishing（OIDC），移除发布 token 的读取与回退。

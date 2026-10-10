@@ -10,7 +10,7 @@ import ToolRuntime, { defineContentToolFixture, type ToolExecutionToken } from "
 import ApprovalService, { setApprovalPolicy } from "@deepseek-ai/dsh-user-approval";
 import PermissionPresetService, { AUTO_PRESET } from "@deepseek-ai/dsh-permission-presets";
 import * as NativeAutoReview from "@deepseek-ai/dsh-experimental-auto-review";
-import * as Jev from "../src/dsh.ts";
+import * as Jev from "../src/adapters/dsh.ts";
 import { QUESTIONS } from "../src/reviewer.ts";
 
 function apiResponse(authorization: string, risk: string) {

@@ -1,5 +1,5 @@
 import type { ExtensionAPI, ExtensionContext } from "@earendil-works/pi-coding-agent";
-import { collectUserContext, readConfig, review, type Mode, type Operation, type Verdict } from "./reviewer.ts";
+import { collectUserContext, readConfig, review, type Mode, type Operation, type Verdict } from "../reviewer.ts";
 
 export default function jevReview(pi: ExtensionAPI) {
   let config: ReturnType<typeof readConfig> | undefined;

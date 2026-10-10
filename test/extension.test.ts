@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { test, type TestContext } from "node:test";
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
-import jevReview from "../src/index.ts";
+import jevReview from "../src/adapters/pi.ts";
 import { QUESTIONS } from "../src/reviewer.ts";
 
 function apiResponse(authorization = "authorized", risk = "routine") {
