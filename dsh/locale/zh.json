@@ -1,0 +1,6 @@
+{
+  "meta": {
+    "title": "Jev 自动审查",
+    "description": "使用 TypeSafe Jev 审查 DeepSeek Harness 工具调用，支持置信度阈值与原生人工确认。"
+  }
+}
