@@ -21,8 +21,8 @@ export const Config = z.object({
   confidenceThreshold: z.number().min(0.5).max(1).default(0.95),
   timeoutMs: z.natural().min(100).max(60000).default(5000),
   maxStateBytes: z.natural().min(1024).max(131072).default(32768),
-  llmApiKeyEnv:z.string().default("MIMO_TP_KEY"),
-  llmBaseUrl:z.string().default("https://token-plan-cn.xiaomimimo.com/v1"),
+  llmApiKeyEnv:z.string().default("LLM_API_KEY"),
+  llmBaseUrl:z.string(),
   llmModel:z.string().default("mimo-v2.6-flash"),
   llmTimeoutMs:z.natural().min(100).max(120000).default(20000),
   humanAfter:z.natural().min(1).max(10).default(3),
@@ -130,7 +130,7 @@ export function apply(ctx: Context, config: DshConfig): void {
     JEV_PROBABILITY_THRESHOLD: String(config.probabilityThreshold),
     JEV_CONFIDENCE_THRESHOLD: String(config.confidenceThreshold),
     JEV_TIMEOUT_MS: String(config.timeoutMs), JEV_MAX_STATE_BYTES: String(config.maxStateBytes),
-    MIMO_TP_KEY:process.env[config.llmApiKeyEnv],JEV_LLM_BASE_URL:config.llmBaseUrl,JEV_LLM_MODEL:config.llmModel,JEV_LLM_TIMEOUT_MS:String(config.llmTimeoutMs),
+    LLM_API_KEY:process.env[config.llmApiKeyEnv],LLM_BASE_URL:config.llmBaseUrl??process.env.LLM_BASE_URL,JEV_LLM_MODEL:config.llmModel,JEV_LLM_TIMEOUT_MS:String(config.llmTimeoutMs),
     JEV_HUMAN_AFTER:String(config.humanAfter),JEV_SANDBOX_MODE:config.sandboxMode,JEV_SANDBOX_IMAGE:config.sandboxImage,JEV_SANDBOX_TIMEOUT_MS:String(config.sandboxTimeoutMs),
   });
   const execution=attachDshExecution(ctx,resolved);

@@ -29,9 +29,9 @@ test("live Pi routes ordinary owned tools through Docker and uses Jev then LLM o
   const cwd=await mkdtemp(join(tmpdir(),"pi-execution-")),outside=await mkdtemp(join(tmpdir(),"pi-exception-"));
   t.after(()=>rm(cwd,{recursive:true,force:true}));t.after(()=>rm(outside,{recursive:true,force:true}));
   await mkdir(join(cwd,"docs"));await writeFile(join(cwd,"docs/note.md"),"within sandbox");
-  const envNames=[...Object.keys(process.env).filter(key=>key.startsWith("JEV_")),"TYPESAFE_API_KEY","MIMO_TP_KEY"];
+  const envNames=[...Object.keys(process.env).filter(key=>key.startsWith("JEV_")),"TYPESAFE_API_KEY","LLM_API_KEY","LLM_BASE_URL"];
   const previous=Object.fromEntries(envNames.map(key=>[key,process.env[key]]));for(const name of envNames)delete process.env[name];
-  Object.assign(process.env,{JEV_SANDBOX_IMAGE:image,TYPESAFE_API_KEY:"mock-jev-key",MIMO_TP_KEY:"mock-llm-key"});
+  Object.assign(process.env,{JEV_SANDBOX_IMAGE:image,TYPESAFE_API_KEY:"mock-jev-key",LLM_API_KEY:"mock-llm-key"});
   t.after(()=>{for(const [key,value]of Object.entries(previous)){if(value===undefined)delete process.env[key];else process.env[key]=value;}});
   const handlers=new Map<string,any>(),definitions=new Map<string,any>(),notifications:string[]=[];
   const tools:any[]=[{name:"read",description:"read text",parameters:{type:"object",properties:{path:{type:"string"}},required:["path"]},sourceInfo:{source:"builtin",path:"builtin:read"}},

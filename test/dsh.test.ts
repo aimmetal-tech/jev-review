@@ -160,6 +160,8 @@ test("shadow retains the original native enforcing reviewer", async t => {
   assert.deepEqual(await collect(ctx.llm.stream(request())), await collect(original()));
 });
 test("dsh configuration validates thresholds and model at activation", async t => {
+  assert.equal(Jev.Config({}).llmApiKeyEnv, "LLM_API_KEY");
+  assert.equal(Jev.Config({}).llmBaseUrl, undefined);
   assert.equal(Jev.Config({}).llmModel, "mimo-v2.6-flash");
   assert.equal(Jev.Config({ llmModel: "custom-reviewer" }).llmModel, "custom-reviewer");
   assert.throws(() => Jev.Config({ probabilityThreshold: 0.1 }));
@@ -167,6 +169,32 @@ test("dsh configuration validates thresholds and model at activation", async t =
   const ctx = new Context(); t.after(() => ctx.fiber.dispose());
   await ctx.plugin(LlmRuntime);
   assert.throws(() => Jev.apply(ctx, Jev.Config({ model: "unknown-model" })));
+});
+
+test("DSH final reviewer reads LLM environment defaults and preserves explicit row overrides", async t => {
+  const values = { LLM_API_KEY: "mock-env-key", LLM_BASE_URL: "https://env-review.example/v1/", JEV_CUSTOM_LLM_KEY: "mock-row-key" };
+  const saved = Object.fromEntries(Object.keys(values).map(key => [key, process.env[key]]));
+  Object.assign(process.env, values);
+  t.after(() => { for (const [key, value] of Object.entries(saved)) { if (value === undefined) delete process.env[key]; else process.env[key] = value; } });
+  for (const override of [false, true]) {
+    await t.test(override ? "explicit row" : "environment defaults", async st => {
+      const ctx = new Context(); st.after(() => ctx.fiber.dispose());
+      await ctx.plugin(LlmRuntime);
+      await ctx.plugin(Jev, { apiKeyEnv: "JEV_UNIT_MISSING_KEY", sandboxMode: "off",
+        ...(override ? { llmApiKeyEnv: "JEV_CUSTOM_LLM_KEY", llmBaseUrl: "https://row-review.example/v1" } : {}) });
+      let calls = 0;
+      st.mock.method(globalThis, "fetch", async (url: unknown, init: RequestInit) => {
+        calls++;
+        assert.equal(url, `https://${override ? "row" : "env"}-review.example/v1/chat/completions`);
+        assert.equal((init.headers as Record<string, string>).Authorization, `Bearer mock-${override ? "row" : "env"}-key`);
+        return Response.json({ choices: [{ finish_reason: "stop", message: { content: JSON.stringify({
+          decision: "allow", authorization: "authorized", risk: "routine", reason: "bounded read", saferAlternative: null,
+        }) } }] });
+      });
+      assert.equal(decision(await collect(ctx.llm.stream(request()))).decision, "allow");
+      assert.equal(calls, 1);
+    });
+  }
 });
 test("disposing the adapter aborts and drains an in-flight Jev request", async t => {
   const ctx = new Context(); t.after(() => ctx.fiber.dispose());

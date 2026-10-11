@@ -12,6 +12,8 @@
 
 两个适配器共用审查核心，但保留各自宿主的审批机制：Pi 拦截工具事件；DSH 接管原生 Auto review 的模型请求，由原生插件继续管理工具审批与人工确认。主 Agent 的模型配置不由本项目替换。
 
+最终审查 LLM 通过 `LLM_API_KEY` 与 `LLM_BASE_URL` 读取凭据和 OpenAI Chat Completions 端点；未设置端点时使用 MiMo Token Plan 默认地址。DSH 的 `llmApiKeyEnv` 默认指向 `LLM_API_KEY`，显式 `llmBaseUrl` 优先于 `LLM_BASE_URL`；未指定时沿用共用核心默认地址。旧 `MIMO_TP_KEY` 与 `JEV_LLM_BASE_URL` 不再自动读取；Jev 仍使用 `TYPESAFE_API_KEY`。
+
 Jev 接口使用结构化 Choice 决策，同一次请求评估授权和风险。受管操作在真实 Docker 沙箱站立权限内自动执行；越界先 Jev，再独立 LLM，未解决先拒绝并提示替代路径，连续达到恢复预算后才人工。不能可靠判断、取消、执行绑定或后端失败时不得静默放行。执行隔离只覆盖插件拥有的工具体，不把整个宿主服务或未受管工具称为沙箱。成本、延迟与分类质量必须区分文档估算、模拟测试和真实 API 测量。
 
 ## 技术栈

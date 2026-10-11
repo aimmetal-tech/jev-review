@@ -4,9 +4,10 @@
 
 ## [Unreleased]
 
+- **配置迁移**：最终审查改为读取 `LLM_API_KEY` 与 `LLM_BASE_URL`，旧 `MIMO_TP_KEY` 与 `JEV_LLM_BASE_URL` 不再自动读取。DSH 默认继承新环境配置，显式行配置仍优先；未设置端点时保留 MiMo Token Plan 默认地址。
 - Pi 与 DSH 的最终审查 LLM 默认改为 `mimo-v2.6-flash`；仍可通过 `JEV_LLM_MODEL` 或 DSH 的 `llmModel` 显式覆盖。
 - 新增真实 Docker 沙箱：站立权限内的受管操作直接执行；越界按 Jev 快速判断、独立 OpenAI 兼容 LLM 兜底逐层审查。
-- 默认最终模型使用 `MIMO_TP_KEY` 与 MiMo Token Plan 端点，主 Agent 的模型不替换；模型批准仅绑定一次操作，失败不会回退到宿主未隔离执行。
+- 默认最终模型使用 `LLM_API_KEY` 与 MiMo Token Plan 端点，主 Agent 的模型不替换；模型批准仅绑定一次操作，失败不会回退到宿主未隔离执行。
 - 默认先返回拒绝与替代路径，连续未解决 3 次才人工审批；明确拒绝不自动弹窗，保留 `manual` / `never` 与取消约束。
 - Pi 标准工具使用沙箱执行体，DSH 新增 `jev_*` 执行工具与容器内 `jev_code`；开启沙箱时不执行旧宿主 PTC，使用 native 工具呈现。
 - Docker 成为默认沙箱的运行前提；旧流程可显式 `JEV_SANDBOX_MODE=off`，本轮尚未发布 npm 包。

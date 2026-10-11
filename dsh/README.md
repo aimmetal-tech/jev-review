@@ -4,7 +4,7 @@
 
 ## 安装与启用
 
-> 本轮 Sandbox/LLM 功能在 Unreleased 源码中，尚未发布 npm；已发布 0.0.101 仍是旧流程。源码试用先准备本地 Docker 和 `docker pull node:22-bookworm-slim`，设置 `TYPESAFE_API_KEY` 与 `MIMO_TP_KEY` 后安装本地包。
+> 本轮 Sandbox/LLM 功能在 Unreleased 源码中，尚未发布 npm；已发布 0.0.101 仍是旧流程。源码试用先准备本地 Docker 和 `docker pull node:22-bookworm-slim`，设置 `TYPESAFE_API_KEY` 与 `LLM_API_KEY` 后安装本地包。
 
 推荐通过 DSH 的插件管理命令，从 npm 按版本安装预构建包。先在启动 DSH 的同一个终端设置 API key；Windows PowerShell 使用 `$env:TYPESAFE_API_KEY = 'your-key'`，Bash 示例：
 
@@ -73,14 +73,16 @@ npx @deepseek-ai/dsh@0.2.1-alpha.2 web
         sandboxMode: workspace-write
         sandboxImage: node:22-bookworm-slim
         sandboxTimeoutMs: 60000
-        llmApiKeyEnv: MIMO_TP_KEY
-        llmBaseUrl: https://token-plan-cn.xiaomimimo.com/v1
+        llmApiKeyEnv: LLM_API_KEY
+        # 默认从 LLM_BASE_URL 读取；可用 llmBaseUrl 显式覆盖
         llmModel: mimo-v2.6-flash
         llmTimeoutMs: 20000
         humanAfter: 3
 ```
 
 已有配置层请使用其原有覆盖机制；匹配覆盖会替换完整 config。配置字段与默认值如上，数值范围与 [共用审查器](../README.md) 相同。dsh 的行配置优先；Pi 的 `JEV_*` 环境配置不会自动改写 dsh 行。
+
+最终审查默认读取 `LLM_API_KEY` 与 `LLM_BASE_URL`；端点未设置时使用 `https://token-plan-cn.xiaomimimo.com/v1`。`llmApiKeyEnv` 可指定其他 key 环境变量，`llmBaseUrl` 可覆盖端点。旧 `MIMO_TP_KEY` 与 `JEV_LLM_BASE_URL` 不再自动读取，请迁移到新名称。
 
 - `auto`：先沙箱站立权限，再 Jev 与 LLM，未解决先恢复、最后才人工。
 - `manual`：不调用 Jev，所有原生 Auto 审查都进入人工审批；`never` 会直接拒绝。

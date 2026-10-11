@@ -16,7 +16,7 @@ function apiResponse(authorization = "authorized", risk = "routine") {
   }, usage: { input_tokens: 500, output_tokens: 30 } }));
 }
 function harness(t: TestContext, env: Record<string, string> = {}, hasUI = false) {
-  const names = new Set([...Object.keys(process.env).filter(k => k.startsWith("JEV_")), "TYPESAFE_API_KEY", "MIMO_TP_KEY", ...Object.keys(env)]);
+  const names = new Set([...Object.keys(process.env).filter(k => k.startsWith("JEV_")), "TYPESAFE_API_KEY", "LLM_API_KEY", "LLM_BASE_URL", ...Object.keys(env)]);
   const saved = Object.fromEntries([...names].map(k => [k, process.env[k]]));
   for (const name of names) delete process.env[name];
   Object.assign(process.env, { TYPESAFE_API_KEY: "test-key", JEV_SANDBOX_MODE:"off",...env });

@@ -19,9 +19,9 @@ test("live Docker confines workspace files, process filesystem and network", {sk
   await writeFile(join(cwd,".env"),"DO_NOT_EXPOSE_THIS_FIXTURE\n");
   const sandbox=new DockerSandbox(readSandboxConfig({JEV_SANDBOX_IMAGE:process.env.JEV_TEST_IMAGE??"public.ecr.aws/docker/library/node:24-alpine"}));
   t.after(()=>sandbox.dispose());
-  const previous={mimo:process.env.MIMO_TP_KEY,jev:process.env.TYPESAFE_API_KEY};
-  process.env.MIMO_TP_KEY="synthetic-secret-canary";process.env.TYPESAFE_API_KEY="synthetic-jev-canary";
-  t.after(()=>{for(const [key,value]of Object.entries({MIMO_TP_KEY:previous.mimo,TYPESAFE_API_KEY:previous.jev})){if(value===undefined)delete process.env[key];else process.env[key]=value;}});
+  const previous={llm:process.env.LLM_API_KEY,jev:process.env.TYPESAFE_API_KEY};
+  process.env.LLM_API_KEY="synthetic-secret-canary";process.env.TYPESAFE_API_KEY="synthetic-jev-canary";
+  t.after(()=>{for(const [key,value]of Object.entries({LLM_API_KEY:previous.llm,TYPESAFE_API_KEY:previous.jev})){if(value===undefined)delete process.env[key];else process.env[key]=value;}});
   const operation=(tool:string,input:Record<string,unknown>):Operation=>({tool,input,cwd,source:"agent"});
   async function run(op:Operation, approved=false) {const plan=await sandbox.prepare(op);assert.ok(plan);return sandbox.execute(plan,op,approved);}
   const read=await run(operation("read",{path:"docs/note.md",limit:2}));
@@ -34,7 +34,7 @@ test("live Docker confines workspace files, process filesystem and network", {sk
   assert.equal(immutable.isError,true);
   const net=await run(operation("bash",{command:"node -e 'fetch(\"https://example.com\",{signal:AbortSignal.timeout(1000)}).then(()=>process.exit(0)).catch(()=>process.exit(3))'"}));
   assert.equal(net.exitCode,3);
-  const environment=await run(operation("bash",{command:"node -e 'console.log(process.env.MIMO_TP_KEY,process.env.TYPESAFE_API_KEY)'"}));
+  const environment=await run(operation("bash",{command:"node -e 'console.log(process.env.LLM_API_KEY,process.env.TYPESAFE_API_KEY)'"}));
   assert.equal(environment.text.trim(),"undefined undefined");
   const masked=await run(operation("bash",{command:"cat .env || true"}));
   assert.equal(masked.text.includes("DO_NOT_EXPOSE_THIS_FIXTURE"),false);

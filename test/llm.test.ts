@@ -5,7 +5,7 @@ import { readConfig, review, QUESTIONS, type ReviewState } from "../src/reviewer
 
 const state: ReviewState = { operation: { tool: "bash", source: "agent", cwd: "/project", input: { command: "npm install" } },
   userRequests: ["Install project dependencies"], incompleteContext: false };
-const llm = readLLMConfig({ MIMO_TP_KEY: "mock-llm-key" });
+const llm = readLLMConfig({ LLM_API_KEY: "mock-llm-key", LLM_BASE_URL: "https://review.example/v1/" });
 function result(decision = "allow", authorization = "authorized", risk = "sensitive") {
   return { model: "mimo-v2.6-flash", choices: [{ finish_reason: "stop", message: { content: JSON.stringify({ decision, authorization, risk,
     reason: "private provider prose", saferAlternative: "private injected alternative" }) } }], usage: { prompt_tokens: 20, completion_tokens: 10 } };
@@ -21,7 +21,7 @@ test("fallback uses the configured independent OpenAI-compatible reviewer and st
   let calls = 0;
   const verdict = await reviewLLM(state, llm, async (url, init) => {
     calls++;
-    assert.equal(url, "https://token-plan-cn.xiaomimimo.com/v1/chat/completions");
+    assert.equal(url, "https://review.example/v1/chat/completions");
     assert.equal((init!.headers as Record<string, string>).Authorization, "Bearer mock-llm-key");
     assert.equal(init!.redirect, "error");
     const request = JSON.parse(init!.body as string);
@@ -39,7 +39,7 @@ test("fallback uses the configured independent OpenAI-compatible reviewer and st
 });
 
 test("Jev runs first; a fast approval skips LLM and all other results get a final opinion", async () => {
-  const config = readConfig({ TYPESAFE_API_KEY: "mock-jev-key", MIMO_TP_KEY: "mock-llm-key" });
+  const config = readConfig({ TYPESAFE_API_KEY: "mock-jev-key", LLM_API_KEY: "mock-llm-key" });
   for (const [risk, authorization, expected] of [["routine", "authorized", "allow"], ["routine", "unapproved", "allow"], ["sensitive", "authorized", "allow"]]) {
     const urls: string[] = [];
     const verdict = await review(state, config, async url => { urls.push(String(url)); return urls.length === 1 ? jev(risk, authorization) : Response.json(result()); });
@@ -52,7 +52,7 @@ test("Jev runs first; a fast approval skips LLM and all other results get a fina
 });
 
 test("Jev transport or parsing failure can recover via the independent final reviewer", async () => {
-  const config = readConfig({ TYPESAFE_API_KEY: "mock-jev-key", MIMO_TP_KEY: "mock-llm-key" });
+  const config = readConfig({ TYPESAFE_API_KEY: "mock-jev-key", LLM_API_KEY: "mock-llm-key" });
   for (const failure of [() => new Response("secret-error", { status: 503 }), () => new Response("invalid JSON"), () => { throw new Error("secret exception"); }]) {
     let calls = 0;
     const verdict = await review(state, config, async () => ++calls === 1 ? failure() : Response.json(result()));
@@ -60,13 +60,13 @@ test("Jev transport or parsing failure can recover via the independent final rev
     assert.equal(verdict.source, "llm");
     assert.equal(verdict.decision, "allow");
   }
-  const verdict = await review(state, readConfig({ MIMO_TP_KEY: "mock-llm-key" }), async () => Response.json(result()));
+  const verdict = await review(state, readConfig({ LLM_API_KEY: "mock-llm-key" }), async () => Response.json(result()));
   assert.equal(verdict.source, "llm");
   assert.equal(verdict.decision, "allow");
 });
 
 test("unavailable reviewers, cancellations and incomplete evidence never auto-approve", async () => {
-  const config = readConfig({ TYPESAFE_API_KEY: "mock-jev-key", MIMO_TP_KEY: "mock-llm-key" });
+  const config = readConfig({ TYPESAFE_API_KEY: "mock-jev-key", LLM_API_KEY: "mock-llm-key" });
   for (const input of [{ ...state, incompleteContext: true }, { ...state, userRequests: ["x".repeat(40000)] },
     { ...state, operation: { ...state.operation, input: { path: ".env" } } }]) {
     const verdict = await review(input, config, async () => { assert.fail("Incomplete/private snapshots cannot call reviewers"); });
@@ -106,9 +106,14 @@ test("final review timeout aborts the request and does not expose provider data"
 });
 
 test("LLM endpoint and configuration do not allow key-leaking URLs", () => {
+  assert.equal(readLLMConfig({}).baseUrl, "https://token-plan-cn.xiaomimimo.com/v1");
+  assert.equal(readLLMConfig({ LLM_API_KEY: " mock-key " }).apiKey, "mock-key");
+  const legacy = readLLMConfig({ MIMO_TP_KEY: "obsolete-key", JEV_LLM_BASE_URL: "https://obsolete.example/v1" });
+  assert.equal(legacy.apiKey, undefined);
+  assert.equal(legacy.baseUrl, "https://token-plan-cn.xiaomimimo.com/v1");
   assert.equal(readLLMConfig({ JEV_LLM_MODEL: "custom-reviewer" }).model, "custom-reviewer");
-  for (const env of [{ JEV_LLM_BASE_URL: "http://example.com" }, { JEV_LLM_BASE_URL: "https://key@example.com" },
-    { JEV_LLM_BASE_URL: "https://example.com?key=value" }, { JEV_LLM_MODEL: "" }, { JEV_LLM_TIMEOUT_MS: "NaN" }]) {
+  for (const env of [{ LLM_BASE_URL: "http://example.com" }, { LLM_BASE_URL: "https://key@example.com" },
+    { LLM_BASE_URL: "https://example.com?key=value" }, { JEV_LLM_MODEL: "" }, { JEV_LLM_TIMEOUT_MS: "NaN" }]) {
     assert.throws(() => readLLMConfig(env));
   }
 });

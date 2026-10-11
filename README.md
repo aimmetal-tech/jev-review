@@ -18,7 +18,8 @@ Pi 入口可由 Pi 直接加载，无运行时第三方依赖。需要 Node.js �
 
 ```bash
 export TYPESAFE_API_KEY='your-key'
-export MIMO_TP_KEY='your-final-review-key'
+export LLM_API_KEY='your-final-review-key'
+export LLM_BASE_URL='https://token-plan-cn.xiaomimimo.com/v1'
 docker pull node:22-bookworm-slim
 ```
 
@@ -26,7 +27,8 @@ Windows PowerShell 使用：
 
 ```powershell
 $env:TYPESAFE_API_KEY = 'your-key'
-$env:MIMO_TP_KEY = 'your-final-review-key'
+$env:LLM_API_KEY = 'your-final-review-key'
+$env:LLM_BASE_URL = 'https://token-plan-cn.xiaomimimo.com/v1'
 docker pull node:22-bookworm-slim
 ```
 
@@ -93,7 +95,7 @@ Jev 调用官方 `POST https://api.typesafe.ai/v1/systemone`，一次请求同�
 | 用户授权 | authorized / unapproved / unclear |
 | 操作风险 | routine / sensitive / destructive / unknown |
 
-`authorized + routine` 且各自 probability ≥ 0.98、confidence ≥ 0.95 时快速批准；其他结果或 Jev 故障交给独立 LLM 复核。最终 LLM 使用 OpenAI 兼容 Chat Completions JSON 模式，默认 `mimo-v2.6-flash`，key 来自 `MIMO_TP_KEY`，base URL 为 `https://token-plan-cn.xiaomimimo.com/v1`。它独立判断授权、实际影响和边界变化；批准必须为明确授权且影响已知，敏感或破坏性操作只有在明确、有限的用户请求中才可批准。模型不替代执行器的固定约束。
+`authorized + routine` 且各自 probability ≥ 0.98、confidence ≥ 0.95 时快速批准；其他结果或 Jev 故障交给独立 LLM 复核。最终 LLM 使用 OpenAI 兼容 Chat Completions JSON 模式，默认 `mimo-v2.6-flash`，key 来自 `LLM_API_KEY`，base URL 从 `LLM_BASE_URL` 读取，未设置时使用 `https://token-plan-cn.xiaomimimo.com/v1`。它独立判断授权、实际影响和边界变化；批准必须为明确授权且影响已知，敏感或破坏性操作只有在明确、有限的用户请求中才可批准。模型不替代执行器的固定约束。
 
 明确拒绝直接返回固定原因和更安全路径提示。无法可靠判断、未配置审查器或模型故障先返回拒绝以便恢复，连续 3 次未解决才进入人工一次性批准；`never` 和无审批渠道继续阻止。`manual` 是用户显式选择的逐次人工模式，不适用自动恢复策略。一次性许可绑定工具调用、载荷、会话、目录和取消生命周期，不能改变参数、沿用到后续操作或缓存为长期豁免。
 
@@ -163,8 +165,8 @@ L1 仅接受 `path` 与可选的正整数 `offset`、`limit`。普通相对/绝�
 | `JEV_SANDBOX_IMAGE` | node:22-bookworm-slim | 已存在的可信 Linux Node 镜像，不自动下载 |
 | `JEV_SANDBOX_TIMEOUT_MS` | 60000 | 100–600000 ms，取消会停止并清理容器 |
 | `JEV_SANDBOX_DOCKER` | 可信安装目录 | 可指定绝对 CLI 路径，不接受命令字符串 |
-| `MIMO_TP_KEY` | 未设置 | 独立 LLM 兜底 key |
-| `JEV_LLM_BASE_URL` | https://token-plan-cn.xiaomimimo.com/v1 | HTTPS OpenAI 兼容端点 |
+| `LLM_API_KEY` | 未设置 | 独立 LLM 兜底 key |
+| `LLM_BASE_URL` | https://token-plan-cn.xiaomimimo.com/v1 | HTTPS OpenAI Chat Completions 端点 |
 | `JEV_LLM_MODEL` | mimo-v2.6-flash | 独立最终审查模型 |
 | `JEV_LLM_TIMEOUT_MS` | 20000 | 100–120000 ms |
 | `JEV_HUMAN_AFTER` | 3 | 连续未解决审查达到此数才人工，1–10 |
@@ -176,6 +178,8 @@ L1 仅接受 `path` 与可选的正整数 `offset`、`limit`。普通相对/绝�
 | `JEV_REVIEW_USER_BASH` | false | true 时也审查用户 ! / !! 命令 |
 
 无效配置会保留拦截器并阻止操作，不会退化成自动放行。不自动重试失败请求，避免在执行路径上长时间等待。API 重定向被拒绝，Jev 响应限制为 64 KiB，最终 LLM 为 128 KiB，取消请求不会继续询问用户。并发人工确认弹窗串行显示。
+
+最终审查的旧 `MIMO_TP_KEY` 与 `JEV_LLM_BASE_URL` 不再自动读取，请改用 `LLM_API_KEY` 与 `LLM_BASE_URL`。DSH 默认读取同一组变量，但显式 `llmApiKeyEnv` / `llmBaseUrl` 行配置优先；`JEV_LLM_MODEL` 等 Pi 专用配置仍不自动覆盖 DSH。
 
 ## 开发验证与成本
 
