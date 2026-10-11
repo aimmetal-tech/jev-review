@@ -4,6 +4,8 @@
 
 ## [Unreleased]
 
+- 新增手动开启的云端 Pi/DSH 真实模型冒烟测试：安装实际 tarball、固定真实宿主与 Docker，6 类场景各宿主运行一次，使用仓库测试 Secrets。
+- 增加真实 API 协议预检查、请求/工具/时间预算、失败与未覆盖判定及脱敏 artifact；Jev 故障注入与真实模型测量分别记录，不新增插件运行时依赖。
 - **配置迁移**：最终审查改为读取 `LLM_API_KEY` 与 `LLM_BASE_URL`，旧 `MIMO_TP_KEY` 与 `JEV_LLM_BASE_URL` 不再自动读取。DSH 默认继承新环境配置，显式行配置仍优先；未设置端点时保留 MiMo Token Plan 默认地址。
 - Pi 与 DSH 的最终审查 LLM 默认改为 `mimo-v2.6-flash`；仍可通过 `JEV_LLM_MODEL` 或 DSH 的 `llmModel` 显式覆盖。
 - 新增真实 Docker 沙箱：站立权限内的受管操作直接执行；越界按 Jev 快速判断、独立 OpenAI 兼容 LLM 兜底逐层审查。

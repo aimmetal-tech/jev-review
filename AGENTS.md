@@ -49,14 +49,23 @@ jev-review/
 |-- .gitignore                  # 依赖、构建和打包产物的忽略规则
 |-- .github/
 |   `-- workflows/
-|       |-- ci.yml              # Node.js 版本矩阵与发布包安装验证
+|       |-- ci.yml              # Node.js 版本矩阵、云端真实模型与发布包安装验证
 |       `-- release.yml         # tag 校验、GitHub Release 与 npm 发布
 |-- docs/
-|   `-- RELEASING.md            # 发布身份、版本流程和预构建安装
+|   |-- RELEASING.md            # 发布身份、版本流程和预构建安装
+|   `-- LIVE_TESTING.md         # 云端真实模型场景、凭据、限额和证据边界
 |-- scripts/
 |   |-- release-info.ts         # tag/更新日志校验与 npm 重试检查
 |   |-- check-package.ts        # 构建、打包、校验文件和隔离安装
-|   `-- package-smoke.ts        # 已安装包的 Pi 加载与 DSH 导出验证
+|   |-- package-smoke.ts        # 已安装包的 Pi 加载与 DSH 导出验证
+|   `-- live/                  # 测试专用，不随 npm 包分发
+|       |-- core.ts            # 云端入口检查、限额、脱敏和证据判定
+|       |-- prepare.ts         # 无凭据安装实际 tarball 和固定宿主、构建控制模块
+|       |-- run.ts             # Pi RPC / DSH SDK 子进程、真实 API 预检查和场景报告
+|       |-- observer.ts        # 真实请求观测、故障注入与请求限额
+|       |-- preload.ts         # 受测宿主的 Node fetch 观测入口
+|       |-- pi-control.ts      # Pi 工具白名单、结果证据与次数约束
+|       `-- dsh-control.ts     # DSH Auto preset、拒绝型 guard 和无人值守审批拒绝
 |-- src/
 |   |-- reviewer.ts             # Jev 客户端、授权/风险规则、配置与判定
 |   |-- l1.ts                   # 可信工具、只读范围与规范路径的本地分类
@@ -84,12 +93,15 @@ jev-review/
 |   |-- extension.test.ts       # Pi 事件、任务授权生命周期、交互、取消与参数变化
 |   |-- dsh.test.ts             # DSH 协议转换与 Cordis middleware
 |   |-- dsh-native.test.ts      # 真实 DSH 服务的原生审批链路
-|   `-- release.test.ts         # 发布身份、版本、说明与重复发布保护
+|   |-- release.test.ts         # 发布身份、版本、说明与重复发布保护
+|   `-- live-model.test.ts      # 云端守卫、请求预算、脱敏、未覆盖与清理判定的模拟验证
 `-- dist/                      # 构建生成，不纳入 Git
     `-- dsh.js                  # jev-review/dsh 导出，随 npm 包分发
 ```
 
 `node_modules/`、`*.tgz`、`.release/` 和其他被忽略的本地产物不属于受版本管理的项目结构。`dist/dsh.js` 虽不提交 Git，但必须在打包前构建，并由 `package.json.files` 纳入分发包。`prepack` 自动构建 DSH，发布工作流发布经过验证的同一份 tarball。
+
+云端真实模型测试由现有 CI 的 `workflow_dispatch.live_models` 显式开启，默认关闭；只在 GitHub 托管 Linux VM 中运行。`npm run live:prepare` 在无模型凭据步骤安装实际包与固定宿主；`npm run test:live -- pi|dsh` 使用测试 Secrets，报告写入 `.release/live-model/<host>/` 并保留 artifact 7 天。SDK client 仅为固定版本开发依赖，不改变 Pi 或插件运行时依赖。真实模型/宿主/Docker 测试不得在个人电脑执行；本地只做静态检查和模拟验证。
 
 ## 结构性同步规则
 

@@ -183,6 +183,14 @@ L1 仅接受 `path` 与可选的正整数 `offset`、`limit`。普通相对/绝�
 
 ## 开发验证与成本
 
+### 云端真实模型测试
+
+使用 GitHub 托管临时 Ubuntu VM，实际安装本轮 tarball，分别启动 Pi `1.1.0` 标准 CLI 和 DSH `0.2.1-alpha.2` SDK 宿主。主模型与最终审查均为 `mimo-v2.6-flash`，Jev 独立调用。配置仓库 Secrets `LLM_API_KEY`、`LLM_BASE_URL`、`TYPESAFE_API_KEY` 后，手动触发 CI 的 `live_models=true`；普通 push/PR 不使用凭据。不要在个人电脑运行真实入口。
+
+六类场景分别在两个宿主各一次：权限内读写、授权越界写、金丝雀隔离、文档注入、Jev 故障后的真实最终审查。报告区分真实请求与故障注入，缺少实际目标操作记为未覆盖，文件副作用和清理也必须通过。模拟测试不替代真实报告，少量实跑不代表总体模型分类质量。完整配置、限额与 artifact 说明见 [云端测试](docs/LIVE_TESTING.md)。
+
+### 常规检查
+
 ```bash
 npm ci --ignore-scripts
 npm run verify

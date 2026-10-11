@@ -30,7 +30,7 @@ try {
   assert.equal(packed.version, metadata.version);
   assert.equal(packed.filename, `jev-review-${metadata.version}.tgz`);
   const paths = new Set<string>(packed.files.map((file: { path: string }) => file.path));
-  for (const path of ["package.json", "README.md", "LICENSE", "CHANGELOG.md", "docs/RELEASING.md", "src/adapters/pi.ts", "src/adapters/dsh.ts", "src/reviewer.ts", "src/l1.ts", "dist/dsh.js", "dsh/cordis.patch.yml", "dsh/icon.svg", "dsh/locale/en.json", "dsh/locale/zh.json"]) {
+  for (const path of ["package.json", "README.md", "LICENSE", "CHANGELOG.md", "docs/RELEASING.md", "docs/LIVE_TESTING.md", "src/adapters/pi.ts", "src/adapters/dsh.ts", "src/reviewer.ts", "src/l1.ts", "dist/dsh.js", "dsh/cordis.patch.yml", "dsh/icon.svg", "dsh/locale/en.json", "dsh/locale/zh.json"]) {
     assert.ok(paths.has(path), `Missing package resource: ${path}`);
   }
   for(const path of ["src/llm.ts","src/recovery.ts","src/sandbox.ts","src/sandbox-worker.ts","src/adapters/dsh-sandbox.ts"])assert.ok(paths.has(path),`Missing sandbox resource: ${path}`);
