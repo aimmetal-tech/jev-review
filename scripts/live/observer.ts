@@ -15,11 +15,11 @@ export function events(): Event[] {
   catch (error) { if ((error as NodeJS.ErrnoException).code === "ENOENT") return []; throw error; }
 }
 function tokens(value: unknown): number | null { return Number.isSafeInteger(value) && (value as number) >= 0 ? value as number : null; }
-export function installObserver(): void {
+export function installObserver(): typeof fetch {
   assertCloud(process.env);
   const marker=Symbol.for("jev-review.live-observer");
-  const globals=globalThis as typeof globalThis & Record<symbol,boolean>;
-  if(globals[marker])return;
+  const globals=globalThis as typeof globalThis & Record<symbol,typeof fetch>;
+  if(globals[marker]){globalThis.fetch=globals[marker];return globals[marker];}
   const original = globalThis.fetch;
   const base = (process.env.LLM_BASE_URL ?? "").replace(/\/+$/, "");
   if (!base || !process.env.LLM_API_KEY || !process.env.TYPESAFE_API_KEY) throw new Error("LIVE_CREDENTIALS_MISSING");
@@ -73,5 +73,6 @@ export function installObserver(): void {
       return response;
     } catch { emit({type:"response",role,id,real:true,status:0,durationMs:Date.now()-started});throw new Error("LIVE_TRANSPORT_FAILED"); }
   };
-  globals[marker]=true;
+  globals[marker]=globalThis.fetch;
+  return globals[marker];
 }

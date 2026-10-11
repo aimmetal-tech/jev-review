@@ -62,7 +62,7 @@ jev-review/
 |       |-- core.ts            # 云端入口检查、限额、脱敏和证据判定
 |       |-- prepare.ts         # 无凭据安装实际 tarball 和固定宿主、构建控制模块
 |       |-- run.ts             # Pi RPC / DSH SDK 子进程、真实 API 预检查和场景报告
-|       |-- observer.ts        # 实际宿主幂等 fetch 观测、故障注入与请求限额
+|       |-- observer.ts        # 可恢复的实际宿主 fetch 观测、故障注入与请求限额
 |       |-- preload.ts         # 受测宿主的 Node fetch 观测入口
 |       |-- pi-control.ts      # Pi 标准 API transport 的显式观测、工具白名单与结果证据
 |       `-- dsh-control.ts     # DSH Auto preset、工具限制与 guard，不重复声明 native 呈现

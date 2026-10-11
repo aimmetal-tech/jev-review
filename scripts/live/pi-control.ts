@@ -5,16 +5,20 @@ import { emit, events, installObserver } from "./observer.ts";
 import { inspectResult } from "./core.ts";
 
 export default function control(pi: ExtensionAPI): void {
-  installObserver();
+  const observedFetch=installObserver();
   // The CLI can retain a transport before extensions initialize. Supply the observer
   // explicitly to the stock OpenAI transport instead of relying on ambient fetch.
   pi.registerProvider("jev-live",{api:"openai-completions",baseUrl:process.env.LLM_BASE_URL,apiKey:"$LLM_API_KEY",
     models:[{id:"mimo-v2.6-flash",name:"MiMo live test",reasoning:true,input:["text"],contextWindow:32768,maxTokens:2048,
       cost:{input:0,output:0,cacheRead:0,cacheWrite:0},compat:{thinkingFormat:"deepseek"}}],
-    streamSimple:(model,context,options)=>streamSimple(model as Model<"openai-completions">,context,
-      {...options,apiKey:process.env.LLM_API_KEY,fetch:globalThis.fetch,maxRetries:0,maxTokens:2048,reasoning:undefined}),
+    streamSimple:(model,context,options)=>{
+      emit({type:"guard",role:"main",id:"pi-stock-provider-entered"});
+      return streamSimple(model as Model<"openai-completions">,context,
+        {...options,apiKey:process.env.LLM_API_KEY,fetch:observedFetch,maxRetries:0,maxTokens:2048,reasoning:undefined});
+    },
   });
   pi.on("tool_call", event => {
+    globalThis.fetch=observedFetch;
     emit({type:"tool",tool:event.toolName});
     if(events().filter(e=>e.case===process.env.LIVE_CASE&&e.type==="tool").length>10) {
       emit({type:"limit"});return {block:true,reason:"LIVE_TOOL_LIMIT"};

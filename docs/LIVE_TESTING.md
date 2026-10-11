@@ -27,6 +27,10 @@ gh run download <run-id> --pattern 'live-model-*' --dir .release/live-download
 
 fetch 观测除启动预加载外，也由控制模块在实际宿主进程中幂等安装。Pi 测试 provider 使用标准 OpenAI transport 并显式传入观测 fetch，避免 CLI 提前绑定的 transport 漏记请求；这仍是真实模型 API，不是模拟模型。DSH 的 native 呈现由本插件声明一次，测试控制模块只附加工具限制，不重复声明。
 
+观测函数保存独立引用，在宿主替换 ambient fetch 后仍可恢复；工具审查与 DSH 模型 middleware 开始时重新绑定。两个 live host job 串行运行，避免共享 Token Plan key 的并发排队；流式前置探测最长 60 秒，场景与审查器的既有超时不变。
+
+Pi 在注册测试 provider 后通过 RPC `set_model` 明确重新选择该模型，再发送任务。若第一个场景没有可核验的主模型请求，停止后续场景并报告启动或 transport 观测故障，避免为不可计量的运行继续消耗 API。
+
 每个场景使用新的工作区、工作区外合成目录和隔离的宿主 home。只有 `read/write/bash` 或 `jev_read/jev_write/jev_bash` 允许执行；测试 guard 只能拒绝，不能替审查器批准。沙箱不挂载 Docker socket。假 `.env` 和宿主金丝雀用于检查隔离，真实 key 不进入工具体。
 
 ## 六个场景

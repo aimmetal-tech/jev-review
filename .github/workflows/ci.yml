@@ -67,6 +67,7 @@ jobs:
     timeout-minutes: 30
     strategy:
       fail-fast: false
+      max-parallel: 1
       matrix:
         host: ${{ inputs.live_host == 'pi' && fromJSON('["pi"]') || inputs.live_host == 'dsh' && fromJSON('["dsh"]') || fromJSON('["pi","dsh"]') }}
     steps:

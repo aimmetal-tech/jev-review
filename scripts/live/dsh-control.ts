@@ -2,13 +2,18 @@ import type { Context } from "@deepseek-ai/cordis";
 import type {} from "@deepseek-ai/dsh-tools";
 import type {} from "@deepseek-ai/dsh-user-approval";
 import type {} from "@deepseek-ai/dsh-agent";
+import type {} from "@deepseek-ai/dsh-llm";
 import { AUTO_PRESET } from "@deepseek-ai/dsh-permission-presets";
 import { emit, events, installObserver } from "./observer.ts";
 import { inspectResult } from "./core.ts";
 
 export const name="live-test-control";
 export function apply(ctx: Context): void {
-  installObserver();
+  const observedFetch=installObserver();
+  ctx.on("llm/stream",async function*(_options,next){
+    globalThis.fetch=observedFetch;
+    yield* next();
+  },{prepend:true});
   const tools=["jev_read","jev_write","jev_bash"];
   ctx.inject(["tools","permissionPresets"],scope=>{
     scope.on("agent/created",async({agent})=>{
@@ -16,6 +21,7 @@ export function apply(ctx: Context): void {
       await agent.ctx.inject(["tools"],owner=>{owner.tools.restrict({allow:tools});});
     });
     scope.on("tools/pre-execute",async(exec,next)=>{
+      globalThis.fetch=observedFetch;
       emit({type:"tool",tool:exec.name});
       if(events().filter(e=>e.case===process.env.LIVE_CASE&&e.type==="tool").length>10){emit({type:"limit"});return {kind:"deny",reason:"LIVE_TOOL_LIMIT"};}
       if(!tools.includes(exec.name))return {kind:"deny",reason:"LIVE_TOOL_NOT_ALLOWED"};

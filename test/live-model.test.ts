@@ -77,6 +77,9 @@ test("observer forwards genuine-shaped requests, isolates injected faults and ne
   installObserver();
   t.after(()=>{delete (globalThis as any)[Symbol.for("jev-review.live-observer")];});
   const observed=globalThis.fetch;installObserver();assert.equal(globalThis.fetch,observed,"observer installation must be idempotent");
+  globalThis.fetch=async()=>{throw new Error("host replaced its ambient fetch");};
+  assert.equal(installObserver(),observed,"cached observer must survive host replacement");
+  assert.equal(globalThis.fetch,observed);
   const {apply}=await import("../scripts/live/dsh-control.ts");
   const handlers=new Map<string,any>();let allow:readonly string[]=[];let guard:any;
   const scope:any={on:(event:string,fn:any)=>handlers.set(event,fn),permissionPresets:{set(){}},tools:{guard:(fn:any)=>{guard=fn;}}};
@@ -98,10 +101,12 @@ test("observer forwards genuine-shaped requests, isolates injected faults and ne
   const {default:piControl}=await import("../scripts/live/pi-control.ts");
   let provider:any;
   piControl({on(){},registerProvider:(_name:string,config:any)=>{provider=config;}} as any);
+  globalThis.fetch=async()=>{throw new Error("provider ambient fetch replaced after initialization");};
   const stream=provider.streamSimple({...provider.models[0],type:"chat",api:"openai-completions",provider:"jev-live",baseUrl:values.LLM_BASE_URL},
     {messages:[{role:"user",content:[{type:"text",text:"Mock transport check"}],timestamp:Date.now()}]},{});
   await stream.result(); // The mock deliberately returns JSON instead of SSE; no host or API is started.
   assert.equal(calls,2,"stock Pi transport must use the explicitly observed mock fetch");
+  globalThis.fetch=observed;
   process.env.LIVE_CASE="jev-failure";
   assert.equal((await fetch("https://api.typesafe.ai/v1/systemone",{method:"POST",body:"{}"})).status,503);
   assert.equal(calls,2);

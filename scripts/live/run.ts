@@ -84,6 +84,8 @@ async function runPi(prompt:string,cwd:string,home:string,env:NodeJS.ProcessEnv)
         appendFileSync(eventFile,JSON.stringify({type:"approval",case:env.LIVE_CASE})+"\n");
         child.stdin.write(JSON.stringify({type:"extension_ui_response",id:event.id,confirmed:false,cancelled:true})+"\n");
       }
+      if(event.type==="response"&&event.id==="select-model"&&event.success)
+        child.stdin.write(JSON.stringify({type:"prompt",id:"task",message:prompt})+"\n");
       if(event.type==="extension_error"||(event.type==="response"&&!event.success)||(event.type==="message_end"&&["error","aborted"].includes(event.message?.stopReason))) {
         protocolFailed=true;
         if(!eventsFor(env.LIVE_CASE as CaseId).some(e=>e.type==="request"))report.startupDiagnostics.push(redact(String(event.error??"PI_PROTOCOL_FAILURE"),secrets).slice(0,1000));
@@ -93,7 +95,7 @@ async function runPi(prompt:string,cwd:string,home:string,env:NodeJS.ProcessEnv)
   });
   // The RPC runtime accepts input after initialization; stdin buffering is intentional.
   child.stdin.on("error",()=>{});
-  child.stdin.write(JSON.stringify({type:"prompt",id:"task",message:prompt})+"\n");
+  child.stdin.write(JSON.stringify({type:"set_model",id:"select-model",provider:"jev-live",modelId:"mimo-v2.6-flash"})+"\n");
   const timer=setTimeout(()=>{protocolFailed=true;settled.resolve();},180000);
   const limitMonitor=setInterval(()=>{if(readEvents().some(e=>e.type==="limit"&&e.case===env.LIVE_CASE)){protocolFailed=true;settled.resolve();}},100);
   try{await settled.promise;}finally{
@@ -131,7 +133,7 @@ try {
   process.env.LIVE_EVENT_FILE=eventFile;process.env.LIVE_CASE="preflight";
   installObserver();
   const mainProbe=await fetch(`${process.env.LLM_BASE_URL!.replace(/\/+$/,"")}/chat/completions`,{method:"POST",
-    headers:{Authorization:`Bearer ${process.env.LLM_API_KEY}`,"Content-Type":"application/json"},signal:AbortSignal.timeout(30000),
+    headers:{Authorization:`Bearer ${process.env.LLM_API_KEY}`,"Content-Type":"application/json"},signal:AbortSignal.timeout(60000),
     body:JSON.stringify({model:"mimo-v2.6-flash",stream:true,max_completion_tokens:256,thinking:{type:"disabled"},
       messages:[{role:"user",content:"Call the probe function once with no arguments. It is a non-executing compatibility check."}],
       tools:[{type:"function",function:{name:"probe",description:"Non-executing test probe",parameters:{type:"object",properties:{},additionalProperties:false}}}],
@@ -187,10 +189,13 @@ try {
       fileChanges:{workspace:workspaceChanged,outside:outsideChanged},hashes:{before:{workspace:beforeWorkspace,outside:beforeOutside},after:{workspace:afterWorkspace,outside:afterOutside}}});
     await rm(root,{recursive:true,force:true});
     console.log(`${host}/${id}: ${verdict.status} (${verdict.reason})`);
+    if(id==="read"&&!eventsFor(id).some(e=>e.type==="request"&&e.role==="main")){
+      report.failure=completed?"LIVE_HOST_TRANSPORT_UNOBSERVED":"LIVE_HOST_BOOTSTRAP_FAILED";break;
+    }
     if(readEvents().some(event=>event.type==="limit"))break;
   }
   report.status=report.cases.length===CASES.length&&report.cases.every((item:any)=>item.status==="pass")?"pass":"fail";
-}catch{report.failure="preflight_or_host_setup_failed";}
+}catch(error){report.failure=error instanceof Error&&/^LIVE_[A-Z_]+$/.test(error.message)?error.message:"preflight_or_host_setup_failed";}
 finally{
   const events=readEvents();
   report.requests=Object.fromEntries(["main","jev","llm"].map(role=>[role,{attempts:events.filter(e=>e.type==="request"&&e.role===role).length,
