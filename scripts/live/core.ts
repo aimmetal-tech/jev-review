@@ -10,6 +10,7 @@ export interface Event {
   tool?: string; ok?: boolean; readMatch?: boolean; canaryProbe?: boolean; canaryProbeFailed?: boolean; leak?: boolean;
   decision?: "allow" | "deny" | "review"; authorization?: string; risk?: string;
   inputTokens?: number | null; outputTokens?: number | null;
+  errorCode?: string;
 }
 export function hash(text: string | Buffer): string { return createHash("sha256").update(text).digest("hex"); }
 export function assertCloud(env: NodeJS.ProcessEnv): void {

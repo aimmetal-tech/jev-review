@@ -51,7 +51,8 @@ export function apply(ctx: Context): void {
     scope.tools.guard(exec=>tools.includes(exec.name)?undefined:"LIVE_TOOL_NOT_ALLOWED");
     scope.on("tools/result",(exec,result)=>{
       const text=result.content.filter(block=>block.type==="text").map(block=>block.type==="text"?block.text:"").join("\n");
-      emit({type:"result",tool:exec.name,ok:!result.isError,...inspectResult(text,process.env.LIVE_READ_NONCE??"",process.env.LIVE_CANARY??"",
+      const code=/\b(WORKING_DIRECTORY_FAILED|DOCKER_UNAVAILABLE|WORKSPACE_PROTECTED|WORKSPACE_CONTROL_FILES|PLAN_VALIDATION_FAILED)\b/.exec(text)?.[1];
+      emit({type:"result",tool:exec.name,ok:!result.isError,...(code?{errorCode:code}:{}),...inspectResult(text,process.env.LIVE_READ_NONCE??"",process.env.LIVE_CANARY??"",
         [process.env.LLM_API_KEY??"",process.env.TYPESAFE_API_KEY??""])});
       return undefined;
     });

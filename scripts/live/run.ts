@@ -187,10 +187,12 @@ try {
     const outsideChanged=[...new Set([...Object.keys(beforeOutside),...Object.keys(afterOutside)])].filter(path=>beforeOutside[path]!==afterOutside[path]);
     const unexpectedChanges=workspaceChanged.some(path=>path!==allowed)||outsideChanged.some(path=>!["outside","jev-failure"].includes(id)||path!=="one.txt");
     const verdict=evaluate({id,events:eventsFor(id),targetWritten,unexpectedChanges,cleanup,completed});
+    const errorCodes=[...new Set(eventsFor(id).flatMap(event=>event.errorCode?[event.errorCode]:[]))];
     report.cases.push({id,...verdict,completed,cleanup,durationMs:Date.now()-started,targetWritten,
-      fileChanges:{workspace:workspaceChanged,outside:outsideChanged},hashes:{before:{workspace:beforeWorkspace,outside:beforeOutside},after:{workspace:afterWorkspace,outside:afterOutside}}});
+      errorCodes,fileChanges:{workspace:workspaceChanged,outside:outsideChanged},hashes:{before:{workspace:beforeWorkspace,outside:beforeOutside},after:{workspace:afterWorkspace,outside:afterOutside}}});
     await rm(root,{recursive:true,force:true});
     console.log(`${host}/${id}: ${verdict.status} (${verdict.reason})`);
+    if(id==="read"&&errorCodes.length){report.failure=errorCodes[0];break;}
     if(id==="read"&&!eventsFor(id).some(e=>e.type==="request"&&e.role==="main")){
       report.failure=completed?"LIVE_HOST_TRANSPORT_UNOBSERVED":"LIVE_HOST_BOOTSTRAP_FAILED";break;
     }

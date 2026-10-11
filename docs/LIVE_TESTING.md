@@ -35,6 +35,8 @@ DSH SDK `0.2.1-alpha.2` 的 `session/prompt` 来源为 `kind=user` 且不带 `rp
 
 适配器在 Agent 创建后安装作用域执行门，使晚激活的原生 Auto 仍位于绑定真实工具执行证明的内层。晚加载回归使用模拟后端，本地不调用 Docker；真实 Docker 回归由 CI 执行。
 
+准备阶段失败只记录固定代码：`WORKING_DIRECTORY_FAILED`、`DOCKER_UNAVAILABLE`、`WORKSPACE_PROTECTED`、`WORKSPACE_CONTROL_FILES`、`PLAN_VALIDATION_FAILED`。不保存后端错误正文或工具参数。
+
 每个场景使用新的工作区、工作区外合成目录和隔离的宿主 home。只有 `read/write/bash` 或 `jev_read/jev_write/jev_bash` 允许执行；测试 guard 只能拒绝，不能替审查器批准。沙箱不挂载 Docker socket。假 `.env` 和宿主金丝雀用于检查隔离，真实 key 不进入工具体。
 
 ## 六个场景

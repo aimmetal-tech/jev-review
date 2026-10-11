@@ -4,7 +4,7 @@ import type { ToolDefinition, ToolExecution, PreToolDecision } from "@deepseek-a
 import type {} from "@deepseek-ai/dsh-working-directory";
 import type {} from "@deepseek-ai/dsh-permission-presets";
 import type { Verdict, Config, Operation } from "../reviewer.ts";
-import { DockerSandbox, sandboxSchema, type SandboxPlan } from "../sandbox.ts";
+import { DockerSandbox, SandboxUnavailableError, sandboxSchema, type SandboxPlan } from "../sandbox.ts";
 import { RecoveryBudget } from "../recovery.ts";
 
 export interface DshReviewFrame { exec:ToolExecution; plan?:SandboxPlan; definition?:ToolDefinition; verdict?:Verdict; approved:boolean; humanEligible:boolean; signature?:string }
@@ -22,7 +22,7 @@ export function attachDshExecution(ctx:Context, config:Config):DshExecution {
   const entries=new Map<symbol,DshReviewFrame>(),definitions=new Map<string,ToolDefinition>();
   const budgets=new Map<string,{signature?:string;budget:RecoveryBudget}>(),presentation=new Map<object,()=>void|Promise<void>>();
   const boundAgents=new WeakSet<object>();
-  ctx.inject(["tools"],scope=>{
+  ctx.inject(["tools","workingDirectory","permissionPresets"],scope=>{
     if(config.sandbox.mode!=="off")for(const [kind,properties]of Object.entries(bases)) {
       const name=kind==="run_code"?"jev_code":`jev_${kind}`;
       const definition:ToolDefinition={name,description:`Jev Docker sandbox ${kind}. File paths are host paths; commands/code execute under /workspace. `+
@@ -45,14 +45,21 @@ export function attachDshExecution(ctx:Context, config:Config):DshExecution {
       const entry:DshReviewFrame={exec,approved:false,humanEligible:false};entries.set(exec.token,entry);
       const definition=definitions.get(exec.name);
       if(definition&&scope.tools.get(exec.name,exec.agent)===definition) {
+        let stage:"directory"|"plan"="directory";
         try {
           if(!exec.arguments||typeof exec.arguments!=="object"||Array.isArray(exec.arguments))throw new Error("Invalid arguments");
           const cwd=await scope.workingDirectory.ensure(exec.agent,exec.signal);
+          stage="plan";
           const kind=exec.name==="jev_code"?"run_code":exec.name.slice(4);
           const operation:Operation={tool:kind,input:exec.arguments as Record<string,unknown>,cwd,source:"agent",description:definition.description};
           let readOnly=false;try{readOnly=scope.permissionPresets.current(exec.agent.session)==="read-only";}catch{/* Deployment standing mode applies without a preset service. */}
           entry.plan=await sandbox.prepare(operation,readOnly,exec.agent.session.header.cwd??cwd);entry.definition=definition;
-        }catch{entries.delete(exec.token);return {kind:"deny",reason:"Sandbox is unavailable or the requested paths cannot be safely mounted; the operation was not executed."};}
+        }catch(error){
+          const code=stage==="directory"?"WORKING_DIRECTORY_FAILED":error instanceof SandboxUnavailableError?"DOCKER_UNAVAILABLE":
+            error instanceof Error&&error.message==="Credential/configuration directories cannot be the standing workspace"?"WORKSPACE_PROTECTED":
+            error instanceof Error&&error.message==="Workspace contains sandbox control-plane files"?"WORKSPACE_CONTROL_FILES":"PLAN_VALIDATION_FAILED";
+          entries.delete(exec.token);return {kind:"deny",reason:`Sandbox preparation failed (${code}); the operation was not executed.`};
+        }
       }
       const result=await frames.run(entry,next);
       if(exec.signal.aborted)return {kind:"cancel"};

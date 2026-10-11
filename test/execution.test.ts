@@ -11,6 +11,7 @@ import SessionProjectionRegistry from "@deepseek-ai/dsh-session-projection";
 import SystemPrompt from "@deepseek-ai/dsh-system-prompt";
 import ToolRuntime from "@deepseek-ai/dsh-tools";
 import ApprovalService from "@deepseek-ai/dsh-user-approval";
+import WorkingDirectoryService from "@deepseek-ai/dsh-working-directory";
 import PermissionPresetService,{AUTO_PRESET} from "@deepseek-ai/dsh-permission-presets";
 import * as NativeAutoReview from "@deepseek-ai/dsh-experimental-auto-review";
 import type {Agent} from "@deepseek-ai/dsh-agent";
@@ -44,7 +45,8 @@ test("late native Auto activation cannot precede an agent's owned execution fram
   await ctx.plugin(DshReview,{apiKeyEnv:"JEV_SIM_MISSING_KEY",llmApiKeyEnv:"JEV_SIM_MISSING_LLM"});
   await ctx.plugin(SessionStore);await ctx.plugin(SessionProjectionRegistry);await ctx.plugin(SystemPrompt,{});await ctx.plugin(ToolRuntime,{mode:"ptc"});
   ctx.provide("shell",{sandboxMode:"workspace-write",resolve(){throw new Error("unused");},execute(){throw new Error("unused");}});
-  ctx.provide("workingDirectory",{ensure:async()=>cwd});
+  ctx.provide("fs",{resolve:async(path:string)=>({path}),stat:async()=>({type:"directory"}),processPath:(target:any)=>target.path});
+  await ctx.plugin(WorkingDirectoryService,{defaultDirectory:cwd});
   await ctx.plugin(ApprovalService,{policy:"ask"});
   await ctx.plugin(PermissionPresetService,{presets:{"workspace-write":{sandbox:"workspace-write",approval:"ask"}},defaultPreset:"workspace-write"});
   await ctx.plugin(NativeAutoReview);
