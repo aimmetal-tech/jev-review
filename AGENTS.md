@@ -76,7 +76,7 @@ jev-review/
 |   `-- adapters/
 |       |-- pi.ts               # Pi 工具拦截、人工审批与 /jev 命令
 |       |-- dsh.ts              # DSH 原生审查协议转换与 Cordis 生命周期
-|       `-- dsh-sandbox.ts      # DSH 受管工具、沙箱证明、恢复预算与执行绑定
+|       `-- dsh-sandbox.ts      # DSH 受管工具、每 Agent 外层执行绑定、恢复预算与清理
 |-- dsh/
 |   |-- README.md               # DSH 安装、配置、兼容版本与审批边界
 |   |-- cordis.patch.yml        # 原生 Auto review 与 Jev 适配器的插件行
@@ -89,7 +89,7 @@ jev-review/
 |   |-- l1.test.ts              # L1 分类、范围、链接、观察与执行档边界
 |   |-- llm.test.ts             # 最终模型协议、顺序、隐私、故障与严格校验
 |   |-- sandbox.test.ts         # 配置与真实文件/网络/代码/取消隔离
-|   |-- execution.test.ts       # 真实 Pi/DSH 沙箱内零模型与越界双模型链路
+|   |-- execution.test.ts       # 模拟晚加载 Auto 回归；真实 Pi/DSH 零模型与越界双模型
 |   |-- extension.test.ts       # Pi 事件、任务授权生命周期、交互、取消与参数变化
 |   |-- dsh.test.ts             # DSH 协议转换与 Cordis middleware
 |   |-- dsh-native.test.ts      # 真实 DSH 服务的原生审批链路
@@ -102,6 +102,8 @@ jev-review/
 `node_modules/`、`*.tgz`、`.release/` 和其他被忽略的本地产物不属于受版本管理的项目结构。`dist/dsh.js` 虽不提交 Git，但必须在打包前构建，并由 `package.json.files` 纳入分发包。`prepack` 自动构建 DSH，发布工作流发布经过验证的同一份 tarball。
 
 云端真实模型测试由现有 CI 的 `workflow_dispatch.live_models` 显式开启，默认关闭；只在 GitHub 托管 Linux VM 中运行。`npm run live:prepare` 在无模型凭据步骤安装实际包与固定宿主；`npm run test:live -- pi|dsh` 使用测试 Secrets，报告写入 `.release/live-model/<host>/` 并保留 artifact 7 天。SDK client 仅为固定版本开发依赖，不改变 Pi 或插件运行时依赖。真实模型/宿主/Docker 测试不得在个人电脑执行；本地只做静态检查和模拟验证。
+
+DSH 执行门在 Agent 创建后绑定到该 Agent 的作用域，并保留全局兼容回退，保证晚激活的原生 Auto 仍在真实执行证明的内层。测试专用 SDK 用户来源绑定仅接受 driver 提供的单一会话、任务 ID 和精确任务文本，在入队前补充 UI 等价来源并保留原消息 ID；不将任意 SDK 输入、工具内容或模型文本当作授权，也不改变生产原生角色规则。
 
 ## 结构性同步规则
 

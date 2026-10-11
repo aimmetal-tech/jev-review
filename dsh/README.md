@@ -96,6 +96,8 @@ npx @deepseek-ai/dsh@0.2.1-alpha.2 web
 
 云端真实模型入口使用固定 `0.2.1-alpha.2` 的 SDK client 启动完整 DSH `sdk` profile 子进程，加载本轮实际 tarball、原生 Auto review 和本插件。主模型与最终审查使用真实 `mimo-v2.6-flash`，只允许受管工具并通过拒绝型 guard 阻止其他工具执行。审批请求自动拒绝用于无人值守收尾，不代表真实人工 UI 已验证。设置仓库测试 Secrets 并手动触发 CI，报告与限额见 [云端测试说明](../docs/LIVE_TESTING.md)；不在个人电脑执行真实入口。
 
+执行绑定在 Agent 创建后安装，避免完整应用启动期间原生 Auto 的晚激活顺序导致受管权限内操作被送去模型。SDK 原始输入不带原生人工来源标识；云端场景用精确会话/任务绑定的测试来源记录验证授权，不会让任意 SDK 消息自动获得权限。
+
 ```bash
 npm run check
 npm run lint

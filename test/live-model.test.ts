@@ -80,7 +80,7 @@ test("observer forwards genuine-shaped requests, isolates injected faults and ne
   globalThis.fetch=async()=>{throw new Error("host replaced its ambient fetch");};
   assert.equal(installObserver(),observed,"cached observer must survive host replacement");
   assert.equal(globalThis.fetch,observed);
-  const {apply}=await import("../scripts/live/dsh-control.ts");
+  const {apply,bindFixtureTask}=await import("../scripts/live/dsh-control.ts");
   const handlers=new Map<string,any>();let allow:readonly string[]=[];let guard:any;
   const scope:any={on:(event:string,fn:any)=>handlers.set(event,fn),permissionPresets:{set(){}},tools:{guard:(fn:any)=>{guard=fn;}}};
   apply({inject:(_services:any,fn:any)=>fn(scope),on:(event:string,fn:any)=>handlers.set(event,fn)} as any);
@@ -91,6 +91,19 @@ test("observer forwards genuine-shaped requests, isolates injected faults and ne
   assert.equal(guard({name:"run_code"}),"LIVE_TOOL_NOT_ALLOWED");
   assert.equal(guard({name:"jev_read"}),undefined);
   assert.equal(globalThis.fetch,observed,"control module must not double wrap fetch");
+  let callback:any;const appended:any[]=[];
+  bindFixtureTask({on:(_event:string,fn:any)=>{callback=fn;}} as any,"expected-session","Read note.txt","expected-task-id");
+  const prompt=(text:string,source:any={kind:"user"})=>({id:"stable-sdk-message",source,content:[{type:"text",text}]});
+  const inputAgent:any={session:{id:"expected-session"},followup:(message:any)=>appended.push(message),ctx:{effect(){}}};
+  const otherAgent={...inputAgent,session:{id:"other-session"}};
+  callback({agent:otherAgent});otherAgent.followup(prompt("Read note.txt"));
+  callback({agent:inputAgent});
+  inputAgent.followup(prompt("Write arbitrary data"));inputAgent.followup(prompt("Read note.txt",{kind:"tool"}));
+  inputAgent.followup(prompt("Read note.txt",{kind:"user",rpcId:"already-human"}));
+  assert.equal(appended.some(message=>message.source.rpcId==="expected-task-id"),false);
+  inputAgent.followup(prompt("Read note.txt"));inputAgent.followup(prompt("Read note.txt"));
+  assert.equal(appended.filter(message=>message.source.rpcId==="expected-task-id").length,1);
+  assert.equal(appended.find(message=>message.source.rpcId==="expected-task-id").id,"stable-sdk-message");
   const response=await fetch("https://fixture.invalid/v1/chat/completions",{method:"POST",body:JSON.stringify({messages:[{role:"system",content:LLM_POLICY}]})});
   await response.text();
   let recorded:Event[]=[];

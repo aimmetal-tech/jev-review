@@ -18,12 +18,55 @@ import {createScope,scopeTarget} from "@deepseek-ai/dsh-scope";
 import piReview from "../src/adapters/pi.ts";
 import * as DshReview from "../src/adapters/dsh.ts";
 import { QUESTIONS } from "../src/reviewer.ts";
+import { DockerSandbox, type SandboxPlan } from "../src/sandbox.ts";
+import { bindFixtureTask } from "../scripts/live/dsh-control.ts";
 
 function jev(risk="routine"){const choice=(value:string,keys:string[])=>({type:"choice",choice:value,confidence:1,probabilities:Object.fromEntries(keys.map(key=>[key,Number(key===value)]))});
   return Response.json({model:"jev-1.13.0",answers:{authorization:choice("authorized",Object.keys(QUESTIONS.authorization.criteria)),risk:choice(risk,Object.keys(QUESTIONS.risk.criteria))}});}
 function llm(){return Response.json({choices:[{finish_reason:"stop",message:{content:JSON.stringify({decision:"allow",authorization:"authorized",risk:"sensitive",reason:"explicit bounded request",saferAlternative:null})}}]});}
 const live=process.env.JEV_TEST_DOCKER==="1";
 const image=process.env.JEV_TEST_IMAGE??"public.ecr.aws/docker/library/node:24-alpine";
+
+test("late native Auto activation cannot precede an agent's owned execution frame (simulated backend)",async t=>{
+  const cwd="/fixture-app";
+  const diagnostic=await mkdtemp(join(tmpdir(),"sdk-authority-simulation-"));t.after(()=>rm(diagnostic,{recursive:true,force:true}));
+  const savedEvents=process.env.LIVE_EVENT_FILE;process.env.LIVE_EVENT_FILE=join(diagnostic,"events.jsonl");
+  t.after(()=>{if(savedEvents===undefined)delete process.env.LIVE_EVENT_FILE;else process.env.LIVE_EVENT_FILE=savedEvents;});
+  t.mock.method(DockerSandbox.prototype,"prepare",async(operation:any)=>({operation,digest:"simulation",root:cwd,
+    action:{kind:"read",args:{path:operation.input.path}},mounts:[],requiresReview:false,network:false,writable:false,cwdTarget:cwd}) as SandboxPlan);
+  t.mock.method(DockerSandbox.prototype,"canRun",()=>true);
+  t.mock.method(DockerSandbox.prototype,"execute",async()=>({text:"simulated confined result",isError:false}));
+  t.mock.method(DockerSandbox.prototype,"dispose",async()=>{});
+  t.mock.method(globalThis,"fetch",async()=>{assert.fail("Standing managed operation must not call a model");});
+  const ctx=new Context();t.after(()=>ctx.fiber.dispose());
+  await ctx.plugin(LlmRuntime);
+  // Matches full application boot: adapter is present before Auto's dependencies.
+  await ctx.plugin(DshReview,{apiKeyEnv:"JEV_SIM_MISSING_KEY",llmApiKeyEnv:"JEV_SIM_MISSING_LLM"});
+  await ctx.plugin(SessionStore);await ctx.plugin(SessionProjectionRegistry);await ctx.plugin(SystemPrompt,{});await ctx.plugin(ToolRuntime,{mode:"ptc"});
+  ctx.provide("shell",{sandboxMode:"workspace-write",resolve(){throw new Error("unused");},execute(){throw new Error("unused");}});
+  ctx.provide("workingDirectory",{ensure:async()=>cwd});
+  await ctx.plugin(ApprovalService,{policy:"ask"});
+  await ctx.plugin(PermissionPresetService,{presets:{"workspace-write":{sandbox:"workspace-write",approval:"ask"}},defaultPreset:"workspace-write"});
+  await ctx.plugin(NativeAutoReview);
+  const session=ctx.sessions.create(SessionId("late-auto-simulation"),{meta:{cwd}});ctx.permissionPresets.set(session,AUTO_PRESET);
+  bindFixtureTask(ctx,String(session.id),"Read note.txt","fixture-human-source");
+  const agent={id:session.id,session,options:{provider:"fixture",model:"fixture"},
+    followup:(message:any)=>{session.append("user/message",message,{surfaceOp:"append"});}} as Agent;
+  const scope=createScope(ctx,agent);Object.assign(agent,{ctx:scope.ctx});t.after(()=>scope.dispose());
+  await ctx.serial(scopeTarget(agent,agent),"agent/created",{agent,source:"startup"});
+  session.append("request/header",{header:{config:{provider:"fixture",model:"fixture"},tools:ctx.tools.schemas(agent)},reason:"initial"});
+  agent.followup(createUserMessage({content:[{type:"text",text:"Read note.txt"}],source:{kind:"user"}}));
+  session.append("turn/start",{turn:1});session.append("step/start",{turn:1,step:1});
+  const id=ToolCallId("late-read"),args={path:"note.txt"},raw=JSON.stringify(args);
+  session.append("assistant/message",{turn:1,step:1,stream:[],message:createMessage({role:"assistant",content:[{type:"tool-call",id,name:"jev_read",arguments:raw}],source:{kind:"model",provider:"fixture",model:"fixture"}})},{surfaceOp:"append"});
+  session.append("tool/call",{turn:1,step:1,callId:id,name:"jev_read",arguments:raw});
+  let nativeRequests:string[]|undefined;
+  ctx.on("llm/stream",(options,next)=>{if(options.system?.startsWith("REVIEW_POLICY\n"))nativeRequests=DshReview.translateReviewInput(options).userRequests;return next();},{prepend:true});
+  const result=await ctx.tools.execute({callId:id,name:"jev_read",arguments:args,agent,signal:new AbortController().signal});
+  assert.equal(result.isError,false,JSON.stringify(result));
+  assert.equal(result.content[0].type==="text"&&result.content[0].text,"simulated confined result");
+  assert.deepEqual(nativeRequests,["Read note.txt"],"native Auto must retain only the exact driver's fixture input as human provenance");
+});
 
 test("live Pi routes ordinary owned tools through Docker and uses Jev then LLM only for exceptions",{skip:!live},async t=>{
   const cwd=await mkdtemp(join(tmpdir(),"pi-execution-")),outside=await mkdtemp(join(tmpdir(),"pi-exception-"));

@@ -8,6 +8,25 @@ import { emit, events, installObserver } from "./observer.ts";
 import { inspectResult } from "./core.ts";
 
 export const name="live-test-control";
+export function bindFixtureTask(ctx:Context,sessionId:string,task:string,taskId:string):void {
+  let bound=false;
+  ctx.on("agent/created",({agent})=>{
+    if(String(agent.session.id)!==sessionId)return undefined;
+    const followup=agent.followup;
+    agent.followup=function(message){
+      // Normalize only the exact trusted driver input before it enters the inbox;
+      // preserve its ID so the SDK receipt still refers to the same message.
+      const matches=!bound&&message.source.kind==="user"&&!("rpcId" in message.source)&&message.content.length===1&&
+        message.content[0].type==="text"&&message.content[0].text===task;
+      if(matches){bound=true;emit({type:"guard",id:"driver-task-bound"});
+        const authorized={...message,source:{kind:"user" as const,rpcId:taskId}};
+        return followup.call(agent,authorized);}
+      return followup.call(agent,message);
+    };
+    agent.ctx.effect(()=>()=>{agent.followup=followup;});
+    return undefined;
+  });
+}
 export function apply(ctx: Context): void {
   const observedFetch=installObserver();
   ctx.on("llm/stream",async function*(_options,next){
@@ -15,6 +34,8 @@ export function apply(ctx: Context): void {
     yield* next();
   },{prepend:true});
   const tools=["jev_read","jev_write","jev_bash"];
+  if(process.env.LIVE_AUTH_SESSION&&process.env.LIVE_AUTH_TASK&&process.env.LIVE_AUTH_ID)
+    bindFixtureTask(ctx,process.env.LIVE_AUTH_SESSION,process.env.LIVE_AUTH_TASK,process.env.LIVE_AUTH_ID);
   ctx.inject(["tools","permissionPresets"],scope=>{
     scope.on("agent/created",async({agent})=>{
       scope.permissionPresets.set(agent.session,AUTO_PRESET);

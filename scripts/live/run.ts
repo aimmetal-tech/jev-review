@@ -104,6 +104,8 @@ async function runPi(prompt:string,cwd:string,home:string,env:NodeJS.ProcessEnv)
   return completed&&!protocolFailed;
 }
 async function runDsh(prompt:string,cwd:string,home:string,env:NodeJS.ProcessEnv):Promise<boolean> {
+  const sessionId=`live-${randomUUID()}`;
+  env={...env,LIVE_AUTH_SESSION:sessionId,LIVE_AUTH_TASK:prompt,LIVE_AUTH_ID:randomUUID()};
   const yaml=join(home,"live.patch.yml");
   const pathString=(path:string)=>JSON.stringify(path);
   await writeFile(yaml,`- id: llm-pi-ai\n  config:\n    providers:\n      jev-live:\n        api: openai-completions\n        apiKeyEnv: LLM_API_KEY\n        reasoning: off\n        compat:\n          thinkingFormat: deepseek\n        baseURL: ${pathString(env.LLM_BASE_URL!)}\n        models:\n          - id: mimo-v2.6-flash\n            reasoning: true\n            contextWindow: 32768\n            maxTokens: 2048\n- id: llm-retry\n  disabled: true\n- insert:\n    - id: native-auto-review\n      name: '@deepseek-ai/dsh-experimental-auto-review'\n    - id: jev-live-review\n      name: ${pathString(join(prepared.installed,"node_modules/jev-review/dist/dsh.js"))}\n    - id: live-test-control\n      name: ${pathString(join(prepared.controls,"dsh-control.mjs"))}\n`);
@@ -116,7 +118,7 @@ async function runDsh(prompt:string,cwd:string,home:string,env:NodeJS.ProcessEnv
   try{
     await harness.start();
     // Select actual native Auto policy before the first real model prompt.
-    const session=harness.session();
+    const session=harness.session(sessionId);
     const result=await session.run(prompt);
     return !timedOut && !result.events.some(event=>event.type==="assistant/message"&&(event as any).message?.stopReason==="error");
   }catch(error){

@@ -1,6 +1,6 @@
 import { AsyncLocalStorage } from "node:async_hooks";
 import type { Context } from "@deepseek-ai/cordis";
-import type { ToolDefinition, ToolExecution } from "@deepseek-ai/dsh-tools";
+import type { ToolDefinition, ToolExecution, PreToolDecision } from "@deepseek-ai/dsh-tools";
 import type {} from "@deepseek-ai/dsh-working-directory";
 import type {} from "@deepseek-ai/dsh-permission-presets";
 import type { Verdict, Config, Operation } from "../reviewer.ts";
@@ -21,6 +21,7 @@ export function attachDshExecution(ctx:Context, config:Config):DshExecution {
   const sandbox=new DockerSandbox(config.sandbox),frames=new AsyncLocalStorage<DshReviewFrame>();
   const entries=new Map<symbol,DshReviewFrame>(),definitions=new Map<string,ToolDefinition>();
   const budgets=new Map<string,{signature?:string;budget:RecoveryBudget}>(),presentation=new Map<object,()=>void|Promise<void>>();
+  const boundAgents=new WeakSet<object>();
   ctx.inject(["tools"],scope=>{
     if(config.sandbox.mode!=="off")for(const [kind,properties]of Object.entries(bases)) {
       const name=kind==="run_code"?"jev_code":`jev_${kind}`;
@@ -38,12 +39,7 @@ export function attachDshExecution(ctx:Context, config:Config):DshExecution {
         }};
       definitions.set(name,definition);scope.tools.register(definition);
     }
-    if(config.sandbox.mode!=="off")scope.on("agent/created",async({agent})=>{
-      const fiber=agent.ctx.inject(["tools"],owner=>{owner.tools.presentAs("native");});
-      await fiber;
-      presentation.set(agent,()=>fiber.dispose());
-    });
-    scope.on("tools/pre-execute",async(exec,next)=>{
+    const gate=async(exec:ToolExecution,next:()=>Promise<PreToolDecision>):Promise<PreToolDecision>=>{
       if(!exec.agent)return next();
       if(config.sandbox.mode!=="off"&&exec.name==="run_code")return {kind:"deny",reason:"Host PTC execution is disabled while the sandbox is active. Use jev_code for confined Node execution, or native jev_* tools."};
       const entry:DshReviewFrame={exec,approved:false,humanEligible:false};entries.set(exec.token,entry);
@@ -75,7 +71,18 @@ export function attachDshExecution(ctx:Context, config:Config):DshExecution {
       }
       if(result.kind!=="allow"&&result.kind!=="ask")entries.delete(exec.token);
       return result;
-    },{prepend:true});
+    };
+    // Native Auto can activate after our global hook while the complete application
+    // boots. Bind an outer gate at agent creation, after global plugins are ready.
+    scope.on("tools/pre-execute",(exec,next)=>exec.agent&&boundAgents.has(exec.agent)?next():gate(exec,next),{prepend:true});
+    scope.on("agent/created",async({agent})=>{
+      const fiber=agent.ctx.inject(["tools"],owner=>{
+        if(config.sandbox.mode!=="off")owner.tools.presentAs("native");
+        owner.on("tools/pre-execute",gate,{prepend:true});
+      });
+      await fiber;boundAgents.add(agent);
+      presentation.set(agent,()=>fiber.dispose());
+    });
     scope.tools.guard(exec=>{
       const entry=entries.get(exec.token);
       if(entry?.definition&&scope.tools.get(exec.name,exec.agent)!==entry.definition)return "Sandbox executor binding changed";
@@ -87,7 +94,7 @@ export function attachDshExecution(ctx:Context, config:Config):DshExecution {
       return outcome;
     },{prepend:true});
     scope.on("tools/result",exec=>{entries.delete(exec.token);return undefined;});
-    scope.on("agent/disposed",({agent})=>{budgets.delete(String(agent.session.id));void presentation.get(agent)?.();presentation.delete(agent);});
+    scope.on("agent/disposed",({agent})=>{boundAgents.delete(agent);budgets.delete(String(agent.session.id));void presentation.get(agent)?.();presentation.delete(agent);});
   });
   ctx.effect(()=>async()=>{for(const dispose of presentation.values())await dispose();presentation.clear();await sandbox.dispose();});
   return {frames,sandbox};
