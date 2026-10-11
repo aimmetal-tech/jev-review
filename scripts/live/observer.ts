@@ -17,6 +17,9 @@ export function events(): Event[] {
 function tokens(value: unknown): number | null { return Number.isSafeInteger(value) && (value as number) >= 0 ? value as number : null; }
 export function installObserver(): void {
   assertCloud(process.env);
+  const marker=Symbol.for("jev-review.live-observer");
+  const globals=globalThis as typeof globalThis & Record<symbol,boolean>;
+  if(globals[marker])return;
   const original = globalThis.fetch;
   const base = (process.env.LLM_BASE_URL ?? "").replace(/\/+$/, "");
   if (!base || !process.env.LLM_API_KEY || !process.env.TYPESAFE_API_KEY) throw new Error("LIVE_CREDENTIALS_MISSING");
@@ -70,4 +73,5 @@ export function installObserver(): void {
       return response;
     } catch { emit({type:"response",role,id,real:true,status:0,durationMs:Date.now()-started});throw new Error("LIVE_TRANSPORT_FAILED"); }
   };
+  globals[marker]=true;
 }

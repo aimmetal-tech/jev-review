@@ -3,16 +3,17 @@ import type {} from "@deepseek-ai/dsh-tools";
 import type {} from "@deepseek-ai/dsh-user-approval";
 import type {} from "@deepseek-ai/dsh-agent";
 import { AUTO_PRESET } from "@deepseek-ai/dsh-permission-presets";
-import { emit, events } from "./observer.ts";
+import { emit, events, installObserver } from "./observer.ts";
 import { inspectResult } from "./core.ts";
 
 export const name="live-test-control";
 export function apply(ctx: Context): void {
+  installObserver();
   const tools=["jev_read","jev_write","jev_bash"];
   ctx.inject(["tools","permissionPresets"],scope=>{
     scope.on("agent/created",async({agent})=>{
       scope.permissionPresets.set(agent.session,AUTO_PRESET);
-      await agent.ctx.inject(["tools"],owner=>{owner.tools.restrict({allow:tools});owner.tools.presentAs("native");});
+      await agent.ctx.inject(["tools"],owner=>{owner.tools.restrict({allow:tools});});
     });
     scope.on("tools/pre-execute",async(exec,next)=>{
       emit({type:"tool",tool:exec.name});

@@ -10,6 +10,11 @@ on:
         description: 'Run real Pi/DSH model smoke tests (uses test API credits)'
         type: boolean
         default: false
+      live_host:
+        description: 'Select a host when validating a failed host fix'
+        type: choice
+        options: [both, pi, dsh]
+        default: both
 
 permissions:
   contents: read
@@ -63,7 +68,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        host: [pi, dsh]
+        host: ${{ inputs.live_host == 'pi' && fromJSON('["pi"]') || inputs.live_host == 'dsh' && fromJSON('["dsh"]') || fromJSON('["pi","dsh"]') }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:

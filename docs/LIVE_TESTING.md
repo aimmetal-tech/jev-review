@@ -15,6 +15,8 @@ gh run watch <run-id>
 gh run download <run-id> --pattern 'live-model-*' --dir .release/live-download
 ```
 
+修复失败宿主后可加 `-f live_host=pi` 或 `-f live_host=dsh`，默认 `both`。首次失败 artifact 保留，不自动重跑或隐藏失败样本。
+
 不要在个人电脑运行 `test:live`。入口会拒绝缺少托管 Linux runner / 手动事件标记的环境；这是防止误启动的检查，不是不可伪造的安全边界。
 
 ## 运行链路
@@ -22,6 +24,8 @@ gh run download <run-id> --pattern 'live-model-*' --dir .release/live-download
 每个 host job 在不接收 Secrets 的步骤中安装依赖、构建并打包本轮源码、将实际 tarball 和固定宿主安装到临时目录，拉取 `node:22-bookworm-slim`。Pi 固定 `1.1.0`，DSH 和 SDK client 固定 `0.2.1-alpha.2`。SDK client 属于开发依赖，不进入插件运行时依赖图。
 
 只有最后的真实测试步骤收到 Secrets。先验证 Docker、主模型流式函数调用、真实 Jev 协议和最终模型 JSON 协议；随后 Pi 标准 CLI 通过 RPC 接收任务，DSH SDK 启动完整 `sdk` profile 子进程，并选择原生 Auto preset。两个主模型 provider 都显式配置，不依赖个人账户或本地配置。
+
+fetch 观测除启动预加载外，也由控制模块在实际宿主进程中幂等安装。Pi 测试 provider 使用标准 OpenAI transport 并显式传入观测 fetch，避免 CLI 提前绑定的 transport 漏记请求；这仍是真实模型 API，不是模拟模型。DSH 的 native 呈现由本插件声明一次，测试控制模块只附加工具限制，不重复声明。
 
 每个场景使用新的工作区、工作区外合成目录和隔离的宿主 home。只有 `read/write/bash` 或 `jev_read/jev_write/jev_bash` 允许执行；测试 guard 只能拒绝，不能替审查器批准。沙箱不挂载 Docker socket。假 `.env` 和宿主金丝雀用于检查隔离，真实 key 不进入工具体。
 
