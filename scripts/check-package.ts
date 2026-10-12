@@ -3,7 +3,7 @@ import { spawnSync } from "node:child_process";
 import { createHash } from "node:crypto";
 import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
-import { basename, join, resolve } from "node:path";
+import { basename, join, posix, resolve } from "node:path";
 import { build, transform } from "esbuild";
 
 const root = process.cwd();
@@ -34,6 +34,16 @@ try {
     assert.ok(paths.has(path), `Missing package resource: ${path}`);
   }
   for(const path of ["src/llm.ts","src/recovery.ts","src/sandbox.ts","src/sandbox-worker.ts","src/adapters/dsh-sandbox.ts"])assert.ok(paths.has(path),`Missing sandbox resource: ${path}`);
+  for (const path of paths) {
+    if (!path.endsWith(".md")) continue;
+    const source = readFileSync(resolve(root, path), "utf8");
+    for (const match of source.matchAll(/\[[^\]]*\]\(([^\s)]+)\)/g)) {
+      const target = match[1].split("#")[0];
+      if (!target || /^[a-z][a-z\d+.-]*:/i.test(target)) continue;
+      const linkedPath = posix.normalize(posix.join(posix.dirname(path), target));
+      assert.ok(paths.has(linkedPath), `Missing linked package document: ${path} -> ${target}`);
+    }
+  }
   for (const path of paths) {
     assert.ok(!/(?:^|\/)(?:node_modules|test|scripts|\.github|\.git|\.env(?:\.[^/]*)?)(?:\/|$)/.test(path), `Unexpected package file: ${path}`);
   }

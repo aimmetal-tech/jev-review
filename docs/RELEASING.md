@@ -1,6 +1,6 @@
 # npm 与 GitHub Release 发布
 
-项目和 npm 包名为 `jev-review`，首版为 **0.0.1**，本文的发布与安装示例使用 **0.0.101**，对应 Git tag **v0.0.101**。npm 和 GitHub Release 的实际发布状态分别以 [npm](https://www.npmjs.com/package/jev-review) 和 [GitHub Releases](https://github.com/aimmetal-tech/jev-review/releases) 为准；提交发布工作流不代表包已发布。
+项目和 npm 包名为 `jev-review`，首版为 **0.0.1**，本文的发布与安装示例使用 **0.0.103**，对应 Git tag **v0.0.103**。npm 和 GitHub Release 的实际发布状态分别以 [npm](https://www.npmjs.com/package/jev-review) 和 [GitHub Releases](https://github.com/aimmetal-tech/jev-review/releases) 为准；提交发布工作流不代表包已发布。
 
 ## 一次性配置
 
@@ -32,10 +32,10 @@ GitHub Release 使用工作流的 `GITHUB_TOKEN`，不需要额外 GitHub 发布
 npm ci --ignore-scripts
 npm run verify
 npm run check:package
-npm run release:info -- v0.0.101
+npm run release:info -- v0.0.103
 ```
 
-`verify` 执行 Oxlint、类型检查和全部测试。`check:package` 会触发 `prepack` 自动构建 DSH，生成 `.release/jev-review-<version>.tgz` 与 `.release/SHA256SUMS`，检查包内容，并在临时目录安装实际 tarball 和固定版本的宿主依赖，验证 Pi 扩展加载、DSH 模块/资源以及原生审批链路。该检查需要 npm registry 网络访问；不调用真实 Jev API。
+`verify` 执行 Oxlint、类型检查和全部测试。`check:package` 会触发 `prepack` 自动构建 DSH，生成 `.release/jev-review-<version>.tgz` 与 `.release/SHA256SUMS`，检查包内容及 Markdown 相对链接，并在临时目录安装实际 tarball 和固定版本的宿主依赖，验证 Pi 扩展加载、DSH 模块/资源以及原生审批链路。该检查需要 npm registry 网络访问；不调用真实 Jev API。
 
 `release:info` 验证 tag 与 `package.json.version` 一致，提取 `CHANGELOG.md` 中对应版本的说明。缺少说明、tag 不匹配或包身份/许可证错误时失败。
 
@@ -47,12 +47,15 @@ Pi 包入口为 `src/adapters/pi.ts`，DSH 源码入口为 `src/adapters/dsh.ts`
 
 ## 触发发布
 
-先使用 `npm version <version> --no-git-tag-version` 更新版本，并同步更新日志与相关文档。完成本轮功能和检查后提交，再为通过检查的提交创建对应 tag 并推送。例如 `package.json.version` 为 `0.0.101` 时：
+先使用 `npm version <version> --no-git-tag-version` 更新版本，并同步更新日志与相关文档。更新先提交到 `codex/cloud-live-tests`，通过 PR Squash 合并到 `main`；为合并后的提交创建对应 tag 并推送。例如 `package.json.version` 为 `0.0.103` 时：
 
 ```bash
-git tag -a v0.0.101 -m 'jev-review 0.0.101'
-git push origin main
-git push origin v0.0.101
+# PR 已 Squash 合并后，获取并检出 main 的合并提交
+git fetch origin
+git switch main
+git pull --ff-only origin main
+git tag -a v0.0.103 -m 'jev-review 0.0.103'
+git push origin v0.0.103
 ```
 
 后续版本可使用 `npm version patch --no-git-tag-version`（或按兼容影响选择 minor/major）。禁止移动已发布 tag 或覆盖 npm 的既有版本。
@@ -73,14 +76,20 @@ Release 工作流执行以下流程：
 
 ```bash
 export TYPESAFE_API_KEY='your-key'
-pi install npm:jev-review@0.0.101
+export LLM_API_KEY='your-final-review-key'
+export LLM_BASE_URL='https://token-plan-cn.xiaomimimo.com/v1'
+docker pull node:22-bookworm-slim
+pi install npm:jev-review@0.0.103
 ```
 
 DSH 可以通过其插件管理命令安装 npm 包：
 
 ```bash
 export TYPESAFE_API_KEY='your-key'
-npx @deepseek-ai/dsh@0.2.1-alpha.2 plugin --profile web add jev-review@0.0.101
+export LLM_API_KEY='your-final-review-key'
+export LLM_BASE_URL='https://token-plan-cn.xiaomimimo.com/v1'
+docker pull node:22-bookworm-slim
+npx @deepseek-ai/dsh@0.2.1-alpha.2 plugin --profile web add jev-review@0.0.103
 npx @deepseek-ai/dsh@0.2.1-alpha.2 web
 ```
 
@@ -91,7 +100,7 @@ DSH 仍需在会话选择 Auto review 或执行 `/permission auto`。安装不�
 ```bash
 sha256sum --check SHA256SUMS
 mkdir -p jev-review
-tar -xzf jev-review-0.0.101.tgz -C jev-review --strip-components=1
+tar -xzf jev-review-0.0.103.tgz -C jev-review --strip-components=1
 ```
 
 Pi 使用 `pi install /absolute/path/to/jev-review`。DSH 本地包还需在解压目录运行 `npm install --omit=dev --ignore-scripts` 来安装运行时依赖，再执行 `dsh plugin --profile web add /absolute/path/to/jev-review`。发布包已经包含 DSH 构建产物，无需 `npm run build`。
