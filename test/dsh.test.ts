@@ -4,7 +4,7 @@ import { fileURLToPath } from "node:url";
 import { test } from "node:test";
 import { Context } from "@deepseek-ai/cordis";
 import LlmRuntime, { BlockAssembler, createUserMessage, type GenerateOptions, type StreamChunk } from "@deepseek-ai/dsh-llm";
-import * as Jev from "../src/dsh.ts";
+import * as Jev from "../src/adapters/dsh.ts";
 import { QUESTIONS, readConfig } from "../src/reviewer.ts";
 
 const native = await readFile(fileURLToPath(import.meta.resolve("@deepseek-ai/dsh-experimental-auto-review")), "utf8");
@@ -103,6 +103,16 @@ test("Jev approval becomes exactly the native low/allow protocol plus token usag
   assert.deepEqual(chunks.find(c => c.type === "usage"), { type: "usage", usage: { inputTokens: 700, outputTokens: 40 } });
   assert.deepEqual(chunks.at(-1), { type: "finish", reason: { kind: "stop" } });
 });
+test("a read-shaped DSH request still reaches Jev even with enforce in the shared config", async () => {
+  let calls = 0;
+  const options = request(undefined, undefined, { name: "read", arguments: { path: "src/main.ts", limit: 20 } });
+  const chunks = await collect(Jev.reviewStream(options, { ...config, l1Mode: "enforce" }, async () => {
+    calls++; return apiResponse("unapproved");
+  }));
+  assert.equal(calls, 1);
+  assert.equal(decision(chunks).decision, "deny");
+});
+
 test("denials, uncertain risk, missing credentials and HTTP failure return native deny", async () => {
   for (const [authorization, risk] of [["unapproved", "routine"], ["authorized", "sensitive"], ["authorized", "destructive"], ["authorized", "unknown"]]) {
     assert.equal(decision(await collect(Jev.reviewStream(request(), config, async () => apiResponse(authorization, risk)))).decision, "deny");
@@ -121,7 +131,7 @@ test("Cordis passes ordinary main-agent streams through unchanged", async t => {
   await ctx.plugin(LlmRuntime);
   let delegated: GenerateOptions | undefined;
   ctx.on("llm/stream", options => { delegated = options; return original(); });
-  await ctx.plugin(Jev, {});
+  await ctx.plugin(Jev, { llmApiKeyEnv: "JEV_UNIT_MISSING_LLM_KEY", sandboxMode: "off" });
   t.mock.method(globalThis, "fetch", async () => { assert.fail("Main model requests must not reach Jev"); });
   const options: GenerateOptions = { provider: "main-provider", model: "main-model", messages: [] };
   assert.deepEqual(await collect(ctx.llm.stream(options)), await collect(original()));
@@ -132,7 +142,7 @@ test("Cordis intercepts only the native Auto request and unloading restores the 
   await ctx.plugin(LlmRuntime);
   let delegated = 0;
   ctx.on("llm/stream", () => { delegated++; return original(); });
-  const fiber = await ctx.plugin(Jev, { apiKeyEnv: "JEV_TEST_KEY" });
+  const fiber = await ctx.plugin(Jev, { apiKeyEnv: "JEV_TEST_KEY", llmApiKeyEnv: "JEV_UNIT_MISSING_LLM_KEY", sandboxMode: "off" });
   const saved = process.env.JEV_TEST_KEY; process.env.JEV_TEST_KEY = "unused";
   t.after(() => { if (saved === undefined) delete process.env.JEV_TEST_KEY; else process.env.JEV_TEST_KEY = saved; });
   // Key was deliberately absent at activation: native denial uses dsh's approval flow.
@@ -146,22 +156,52 @@ test("shadow retains the original native enforcing reviewer", async t => {
   const ctx = new Context(); t.after(() => ctx.fiber.dispose());
   await ctx.plugin(LlmRuntime);
   ctx.on("llm/stream", () => original());
-  await ctx.plugin(Jev, { mode: "shadow", apiKeyEnv: "JEV_MISSING_TEST_KEY" });
+  await ctx.plugin(Jev, { mode: "shadow", apiKeyEnv: "JEV_MISSING_TEST_KEY", llmApiKeyEnv: "JEV_UNIT_MISSING_LLM_KEY", sandboxMode: "off" });
   assert.deepEqual(await collect(ctx.llm.stream(request())), await collect(original()));
 });
 test("dsh configuration validates thresholds and model at activation", async t => {
+  assert.equal(Jev.Config({}).llmApiKeyEnv, "LLM_API_KEY");
+  assert.equal(Jev.Config({}).llmBaseUrl, undefined);
+  assert.equal(Jev.Config({}).llmModel, "mimo-v2.6-flash");
+  assert.equal(Jev.Config({ llmModel: "custom-reviewer" }).llmModel, "custom-reviewer");
   assert.throws(() => Jev.Config({ probabilityThreshold: 0.1 }));
   assert.throws(() => Jev.Config(JSON.parse('{"mode":"off"}')));
   const ctx = new Context(); t.after(() => ctx.fiber.dispose());
   await ctx.plugin(LlmRuntime);
   assert.throws(() => Jev.apply(ctx, Jev.Config({ model: "unknown-model" })));
 });
+
+test("DSH final reviewer reads LLM environment defaults and preserves explicit row overrides", async t => {
+  const values = { LLM_API_KEY: "mock-env-key", LLM_BASE_URL: "https://env-review.example/v1/", JEV_CUSTOM_LLM_KEY: "mock-row-key" };
+  const saved = Object.fromEntries(Object.keys(values).map(key => [key, process.env[key]]));
+  Object.assign(process.env, values);
+  t.after(() => { for (const [key, value] of Object.entries(saved)) { if (value === undefined) delete process.env[key]; else process.env[key] = value; } });
+  for (const override of [false, true]) {
+    await t.test(override ? "explicit row" : "environment defaults", async st => {
+      const ctx = new Context(); st.after(() => ctx.fiber.dispose());
+      await ctx.plugin(LlmRuntime);
+      await ctx.plugin(Jev, { apiKeyEnv: "JEV_UNIT_MISSING_KEY", sandboxMode: "off",
+        ...(override ? { llmApiKeyEnv: "JEV_CUSTOM_LLM_KEY", llmBaseUrl: "https://row-review.example/v1" } : {}) });
+      let calls = 0;
+      st.mock.method(globalThis, "fetch", async (url: unknown, init: RequestInit) => {
+        calls++;
+        assert.equal(url, `https://${override ? "row" : "env"}-review.example/v1/chat/completions`);
+        assert.equal((init.headers as Record<string, string>).Authorization, `Bearer mock-${override ? "row" : "env"}-key`);
+        return Response.json({ choices: [{ finish_reason: "stop", message: { content: JSON.stringify({
+          decision: "allow", authorization: "authorized", risk: "routine", reason: "bounded read", saferAlternative: null,
+        }) } }] });
+      });
+      assert.equal(decision(await collect(ctx.llm.stream(request()))).decision, "allow");
+      assert.equal(calls, 1);
+    });
+  }
+});
 test("disposing the adapter aborts and drains an in-flight Jev request", async t => {
   const ctx = new Context(); t.after(() => ctx.fiber.dispose());
   await ctx.plugin(LlmRuntime);
   const saved = process.env.JEV_DISPOSE_TEST_KEY; process.env.JEV_DISPOSE_TEST_KEY = "test-key";
   t.after(() => { if (saved === undefined) delete process.env.JEV_DISPOSE_TEST_KEY; else process.env.JEV_DISPOSE_TEST_KEY = saved; });
-  const fiber = await ctx.plugin(Jev, { apiKeyEnv: "JEV_DISPOSE_TEST_KEY" });
+  const fiber = await ctx.plugin(Jev, { apiKeyEnv: "JEV_DISPOSE_TEST_KEY", llmApiKeyEnv: "JEV_UNIT_MISSING_LLM_KEY", sandboxMode: "off" });
   const started = Promise.withResolvers<void>();
   let aborted = false;
   t.mock.method(globalThis, "fetch", async (_url: unknown, init: RequestInit) => new Promise<Response>((_resolve, reject) => {

@@ -10,7 +10,7 @@ import ToolRuntime, { defineContentToolFixture, type ToolExecutionToken } from "
 import ApprovalService, { setApprovalPolicy } from "@deepseek-ai/dsh-user-approval";
 import PermissionPresetService, { AUTO_PRESET } from "@deepseek-ai/dsh-permission-presets";
 import * as NativeAutoReview from "@deepseek-ai/dsh-experimental-auto-review";
-import * as Jev from "../src/dsh.ts";
+import * as Jev from "../src/adapters/dsh.ts";
 import { QUESTIONS } from "../src/reviewer.ts";
 
 function apiResponse(authorization: string, risk: string) {
@@ -41,7 +41,7 @@ async function harness(t: TestContext) {
   const saved = process.env.JEV_NATIVE_TEST_KEY;
   process.env.JEV_NATIVE_TEST_KEY = "test-key";
   t.after(() => { if (saved === undefined) delete process.env.JEV_NATIVE_TEST_KEY; else process.env.JEV_NATIVE_TEST_KEY = saved; });
-  const jev = await ctx.plugin(Jev, { apiKeyEnv: "JEV_NATIVE_TEST_KEY" });
+  const jev = await ctx.plugin(Jev, { apiKeyEnv: "JEV_NATIVE_TEST_KEY",llmApiKeyEnv:"JEV_NATIVE_MISSING_LLM_KEY",sandboxMode:"off" });
 
   let runs = 0;
   ctx.tools.register(defineContentToolFixture({
@@ -94,11 +94,26 @@ test("real native Auto and tool runtime execute the body only after Jev allows",
   assert.equal(calls, 1);
   assert.equal(h.ctx.permissionPresets.current(h.session), AUTO_PRESET);
 });
+test("Pi L1 environment configuration cannot bypass the native DSH reviewer", async t => {
+  const saved = process.env.JEV_L1_MODE;
+  process.env.JEV_L1_MODE = "enforce";
+  t.after(() => { if (saved === undefined) delete process.env.JEV_L1_MODE; else process.env.JEV_L1_MODE = saved; });
+  const h = await harness(t);
+  let calls = 0;
+  t.mock.method(globalThis, "fetch", async () => { calls++; return apiResponse("authorized", "routine"); });
+  assert.equal((await h.call()).isError, false);
+  assert.equal(calls, 1);
+  assert.equal(h.runs(), 1);
+});
+
 test("native ask policy presents Jev denial and grants only explicit one-shot approval", async t => {
   const h = await harness(t);
   t.mock.method(globalThis, "fetch", async () => apiResponse("authorized", "sensitive"));
   let asks = 0;
   h.ctx.on("approval/request", async () => { asks++; return "allowed-once"; });
+  assert.equal((await h.call()).isError,true);
+  assert.equal((await h.call()).isError,true);
+  assert.equal(asks,0);
   const result = await h.call();
   assert.equal(result.isError, false, JSON.stringify({ result, asks }));
   assert.equal(h.runs(), 1);

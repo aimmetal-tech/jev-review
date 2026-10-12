@@ -1,16 +1,22 @@
 import { Buffer } from "node:buffer";
-import { resolve } from "node:path";
+import { classifyL1, isProtectedPath, type L1Context, type L1Mode } from "./l1.ts";
+import { readLLMConfig, reviewLLM, type LLMConfig } from "./llm.ts";
+import { readSandboxConfig, type SandboxConfig } from "./sandbox.ts";
 
 export type Mode = "auto" | "manual" | "shadow";
 export interface Config {
   apiKey?: string;
   model: string;
   mode: Mode;
+  l1Mode: L1Mode;
   probabilityThreshold: number;
   confidenceThreshold: number;
   timeoutMs: number;
   maxStateBytes: number;
   reviewUserBash: boolean;
+  llm: LLMConfig;
+  sandbox: SandboxConfig;
+  humanAfter: number;
 }
 export interface Operation {
   tool: string;
@@ -27,6 +33,7 @@ export interface ReviewState {
   incompleteContext: boolean;
   parentRequests?: string[];
   constraints?: string[];
+  sandboxBoundary?: { backend: "docker"; mode: string; workspaceRoot: string; readRoots: string[]; writableRoots: string[]; networkAccess: boolean };
 }
 export interface ChoiceAnswer {
   choice: string;
@@ -36,6 +43,9 @@ export interface ChoiceAnswer {
 export interface Verdict {
   decision: "allow" | "deny" | "review";
   reason: string;
+  source: "local" | "l1" | "jev" | "llm" | "sandbox";
+  alternative?: string;
+  l1Candidate?: string;
   model?: string;
   authorization?: ChoiceAnswer;
   risk?: ChoiceAnswer;
@@ -90,6 +100,8 @@ export function readConfig(env: NodeJS.ProcessEnv): Config {
   }
   const mode = env.JEV_MODE ?? "auto";
   if (mode !== "auto" && mode !== "manual" && mode !== "shadow") throw new Error("Invalid JEV_MODE");
+  const l1Mode = env.JEV_L1_MODE ?? "observe";
+  if (l1Mode !== "off" && l1Mode !== "observe" && l1Mode !== "enforce") throw new Error("Invalid JEV_L1_MODE");
   const reviewUserBash = env.JEV_REVIEW_USER_BASH ?? "false";
   if (reviewUserBash !== "true" && reviewUserBash !== "false") throw new Error("Invalid JEV_REVIEW_USER_BASH");
   const model = env.JEV_MODEL ?? "jev-1.13.0";
@@ -98,11 +110,15 @@ export function readConfig(env: NodeJS.ProcessEnv): Config {
     apiKey: env.TYPESAFE_API_KEY?.trim() || undefined,
     model,
     mode,
+    l1Mode,
     probabilityThreshold: number("JEV_PROBABILITY_THRESHOLD", 0.98, 0.5, 1),
     confidenceThreshold: number("JEV_CONFIDENCE_THRESHOLD", 0.95, 0.5, 1),
     timeoutMs: number("JEV_TIMEOUT_MS", 5000, 100, 60000, true),
     maxStateBytes: number("JEV_MAX_STATE_BYTES", 32768, 1024, 131072, true),
     reviewUserBash: reviewUserBash === "true",
+    llm: readLLMConfig(env),
+    sandbox: readSandboxConfig(env),
+    humanAfter: number("JEV_HUMAN_AFTER", 3, 1, 10, true),
   };
 }
 
@@ -143,7 +159,7 @@ export function parseVerdict(value: unknown, config: Config): Verdict {
   const risk = parseChoice(value.answers.risk, Object.keys(QUESTIONS.risk.criteria));
   const confident = (answer: ChoiceAnswer) =>
     answer.probabilities[answer.choice] >= config.probabilityThreshold && answer.confidence >= config.confidenceThreshold;
-  const result: Verdict = { decision: "review", reason: "Jev needs human review", model: value.model, authorization, risk };
+  const result: Verdict = { decision: "review", reason: "Jev needs human review", source: "jev", model: value.model, authorization, risk };
   if (record(value.usage) && Number.isSafeInteger(value.usage.input_tokens) && Number.isSafeInteger(value.usage.output_tokens) &&
       (value.usage.input_tokens as number) >= 0 && (value.usage.output_tokens as number) >= 0) {
     result.usage = { input_tokens: value.usage.input_tokens as number, output_tokens: value.usage.output_tokens as number };
@@ -186,45 +202,73 @@ export function isSensitivePath(operation: Operation): boolean {
   // This is a review trigger, not a shell parser or a filesystem sandbox.
   const path = operation.input.path;
   if (typeof path !== "string") return false;
-  return /(?:^|[/\\])(?:\.env(?:\.[^/\\]*)?|\.ssh|\.aws|\.gnupg|\.codex|\.pi|\.dsh|jev-review|pi-jev-review)(?:$|[/\\])/i.test(resolve(operation.cwd, path));
+  return isProtectedPath(operation.cwd, path);
 }
+
+export interface ReviewOptions { l1?: L1Context; onJevRequest?: () => void; onLLMRequest?: () => void; sandbox?: { allows(): boolean } }
 
 export async function review(
   state: ReviewState,
   config: Config,
   fetcher: typeof fetch = fetch,
   signal?: AbortSignal,
+  options: ReviewOptions = {},
 ): Promise<Verdict> {
-  const fallback = (reason: string): Verdict => ({ decision: "review", reason });
+  let l1Candidate: string | undefined;
+  const fallback = (reason: string): Verdict => ({ decision: "review", reason, source: "local", ...(l1Candidate ? { l1Candidate } : {}) });
   if (signal?.aborted) return fallback("Review cancelled");
   if (config.mode === "manual") return fallback("Manual approval mode");
-  if (isSensitivePath(state.operation)) return fallback("Protected configuration or credential path");
+  if (config.mode === "auto" && options.sandbox) {
+    try { if (options.sandbox.allows()) return { decision: "allow", source: "sandbox", reason: "Operation will execute within verified standing sandbox permissions" }; }
+    catch { return fallback("Sandbox permission binding is invalid"); }
+  }
+  const privatePath=state.operation.input.path??state.operation.input.file_path;
+  const protectedReview=state.sandboxBoundary ? typeof privatePath==="string"&&/(?:^|[/\\])(?:\.env(?:\.[^/\\]*)?|\.ssh|\.aws|\.gnupg|\.codex|\.pi|\.dsh|\.docker)(?:$|[/\\])/i.test(privatePath) : isSensitivePath(state.operation);
+  if (protectedReview) return fallback("Protected configuration or credential path");
   if (state.incompleteContext) return fallback("User context includes unsupported or missing content");
-  if (!config.apiKey) return fallback("TYPESAFE_API_KEY is not configured");
   let serialized: string;
   try { serialized = JSON.stringify(state); } catch { return fallback("Operation cannot be serialized for review"); }
   if (Buffer.byteLength(serialized, "utf8") > config.maxStateBytes) {
     return fallback("Review context exceeds JEV_MAX_STATE_BYTES; no content was truncated");
+  }
+  if([config.apiKey,config.llm.apiKey].some(key=>key&&serialized.includes(key)))return fallback("Known reviewer credentials cannot be forwarded for automatic review");
+  const captured:ReviewState=JSON.parse(serialized);
+  const finalReview = async (verdict: Verdict): Promise<Verdict> => {
+    if (verdict.decision === "allow" || signal?.aborted || !config.llm.apiKey) return verdict;
+    const last = await reviewLLM(captured, config.llm, fetcher, signal, options.onLLMRequest);
+    return { ...last, ...(l1Candidate ? { l1Candidate } : {}) };
+  };
+  if (!config.apiKey) return finalReview(fallback("TYPESAFE_API_KEY is not configured"));
+  if (config.l1Mode !== "off") {
+    const local = await classifyL1(state.operation, options.l1);
+    if (signal?.aborted) return fallback("Review cancelled");
+    if (local.decision === "allow") {
+      l1Candidate = local.ruleId;
+      if (config.l1Mode === "enforce" && config.mode === "auto") {
+        return { decision: "allow", source: "l1", reason: "UI-authorized scoped built-in read", l1Candidate };
+      }
+    }
   }
   const controller = new AbortController();
   const cancel = () => controller.abort();
   signal?.addEventListener("abort", cancel, { once: true });
   const timer = setTimeout(cancel, config.timeoutMs);
   try {
+    options.onJevRequest?.();
     const response = await fetcher(ENDPOINT, {
       method: "POST",
       headers: { "Authorization": `Bearer ${config.apiKey}`, "Content-Type": "application/json" },
-      body: JSON.stringify({ model: config.model, state, questions: QUESTIONS }),
+      body: JSON.stringify({ model: config.model, state:captured, questions: QUESTIONS }),
       signal: controller.signal,
       redirect: "error",
     });
     if (!response.ok) {
       await response.body?.cancel();
-      return fallback(`Jev HTTP ${response.status}; automatic approval unavailable`);
+      return finalReview(fallback(`Jev HTTP ${response.status}; automatic approval unavailable`));
     }
     // Bound response memory; timer also covers reading the response body.
     const reader = response.body?.getReader();
-    if (!reader) return fallback("Jev returned an empty response");
+    if (!reader) return finalReview(fallback("Jev returned an empty response"));
     const chunks: Uint8Array[] = [];
     let size = 0;
     while (true) {
@@ -233,15 +277,15 @@ export async function review(
       size += chunk.value.byteLength;
       if (size > 65536) {
         await reader.cancel();
-        return fallback("Jev response exceeded the size limit");
+        return finalReview(fallback("Jev response exceeded the size limit"));
       }
       chunks.push(chunk.value);
     }
-    if (controller.signal.aborted) return fallback(signal?.aborted ? "Review cancelled" : "Jev review timed out");
-    return parseVerdict(JSON.parse(Buffer.concat(chunks).toString("utf8")), config);
+    if (controller.signal.aborted) return finalReview(fallback(signal?.aborted ? "Review cancelled" : "Jev review timed out"));
+    return finalReview({ ...parseVerdict(JSON.parse(Buffer.concat(chunks).toString("utf8")), config), ...(l1Candidate ? { l1Candidate } : {}) });
   } catch {
     // Never expose provider response bodies, credentials or exception text.
-    return fallback(signal?.aborted ? "Review cancelled" : controller.signal.aborted ? "Jev review timed out" : "Jev request failed or returned an invalid response");
+    return finalReview(fallback(signal?.aborted ? "Review cancelled" : controller.signal.aborted ? "Jev review timed out" : "Jev request failed or returned an invalid response"));
   } finally {
     clearTimeout(timer);
     signal?.removeEventListener("abort", cancel);

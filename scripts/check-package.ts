@@ -3,13 +3,14 @@ import { spawnSync } from "node:child_process";
 import { createHash } from "node:crypto";
 import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
-import { basename, join, resolve } from "node:path";
-import { transform } from "esbuild";
+import { basename, join, posix, resolve } from "node:path";
+import { build, transform } from "esbuild";
 
 const root = process.cwd();
 const output = resolve(root, ".release");
+const npmCli = process.env.npm_execpath;
+if (!npmCli) throw new Error("Run package verification with npm run check:package");
 const temp = mkdtempSync(join(tmpdir(), "jev-review-package-"));
-const npm = process.platform === "win32" ? "npm.cmd" : "npm";
 
 function run(command: string, args: string[], cwd: string, capture = false): string {
   const result = spawnSync(command, args, { cwd, encoding: "utf8", stdio: capture ? "pipe" : "inherit" });
@@ -23,14 +24,25 @@ function run(command: string, args: string[], cwd: string, capture = false): str
 
 try {
   mkdirSync(output, { recursive: true });
-  const [packed] = JSON.parse(run(npm, ["pack", "--json", "--silent", "--pack-destination", output], root, true));
+  const [packed] = JSON.parse(run(process.execPath, [npmCli, "pack", "--json", "--silent", "--pack-destination", output], root, true));
   const metadata = JSON.parse(readFileSync(resolve(root, "package.json"), "utf8"));
   assert.equal(packed.name, "jev-review");
   assert.equal(packed.version, metadata.version);
   assert.equal(packed.filename, `jev-review-${metadata.version}.tgz`);
   const paths = new Set<string>(packed.files.map((file: { path: string }) => file.path));
-  for (const path of ["package.json", "README.md", "LICENSE", "CHANGELOG.md", "docs/RELEASING.md", "src/index.ts", "src/reviewer.ts", "dist/dsh.js", "dsh/cordis.patch.yml", "dsh/icon.svg", "dsh/locale/en.json", "dsh/locale/zh.json"]) {
+  for (const path of ["package.json", "README.md", "LICENSE", "CHANGELOG.md", "docs/RELEASING.md", "docs/LIVE_TESTING.md", "src/adapters/pi.ts", "src/adapters/dsh.ts", "src/reviewer.ts", "src/l1.ts", "dist/dsh.js", "dsh/cordis.patch.yml", "dsh/icon.svg", "dsh/locale/en.json", "dsh/locale/zh.json"]) {
     assert.ok(paths.has(path), `Missing package resource: ${path}`);
+  }
+  for(const path of ["src/llm.ts","src/recovery.ts","src/sandbox.ts","src/sandbox-worker.ts","src/adapters/dsh-sandbox.ts"])assert.ok(paths.has(path),`Missing sandbox resource: ${path}`);
+  for (const path of paths) {
+    if (!path.endsWith(".md")) continue;
+    const source = readFileSync(resolve(root, path), "utf8");
+    for (const match of source.matchAll(/\[[^\]]*\]\(([^\s)]+)\)/g)) {
+      const target = match[1].split("#")[0];
+      if (!target || /^[a-z][a-z\d+.-]*:/i.test(target)) continue;
+      const linkedPath = posix.normalize(posix.join(posix.dirname(path), target));
+      assert.ok(paths.has(linkedPath), `Missing linked package document: ${path} -> ${target}`);
+    }
   }
   for (const path of paths) {
     assert.ok(!/(?:^|\/)(?:node_modules|test|scripts|\.github|\.git|\.env(?:\.[^/]*)?)(?:\/|$)/.test(path), `Unexpected package file: ${path}`);
@@ -44,18 +56,19 @@ try {
     .filter(([name]) => name.startsWith("@deepseek-ai/") || name === "@earendil-works/pi-coding-agent")
     .map(([name, version]) => `${name}@${version}`);
   // Install the actual tarball in a clean directory, without the project's dev tools.
-  run(npm, ["install", "--ignore-scripts", "--omit=dev", "--no-audit", "--no-fund", "--package-lock=false", tarball, ...hosts], temp);
+  run(process.execPath, [npmCli, "install", "--ignore-scripts", "--omit=dev", "--no-audit", "--no-fund", "--package-lock=false", tarball, ...hosts], temp);
   const installed = resolve(temp, "node_modules/jev-review");
   const smoke = await transform(readFileSync(resolve(root, "scripts/package-smoke.ts"), "utf8"), { loader: "ts", format: "esm", target: "node22" });
   writeFileSync(join(temp, "package-smoke.mjs"), smoke.code);
   run(process.execPath, ["package-smoke.mjs"], temp);
 
   // Native Node type stripping is intentionally disabled inside node_modules.
-  // Compile only the installed core used by the fixture to make its Choice responses.
-  const fixtureCore = await transform(readFileSync(join(installed, "src/reviewer.ts"), "utf8"), { loader: "ts", format: "esm", target: "node22" });
-  writeFileSync(join(temp, "fixture-reviewer.mjs"), fixtureCore.code);
+  // Bundle the installed core and its local dependencies for the fixture's Choice responses.
+  const fixtureCore = await build({ entryPoints: [join(installed, "src/reviewer.ts")], bundle: true, write: false,
+    platform: "node", format: "esm", target: "node22", packages: "external" });
+  writeFileSync(join(temp, "fixture-reviewer.mjs"), fixtureCore.outputFiles[0].text);
   const nativeSource = readFileSync(resolve(root, "test/dsh-native.test.ts"), "utf8")
-    .replace('"../src/dsh.ts"', '"jev-review/dsh"')
+    .replace('"../src/adapters/dsh.ts"', '"jev-review/dsh"')
     .replace('"../src/reviewer.ts"', '"./fixture-reviewer.mjs"');
   const native = await transform(nativeSource, { loader: "ts", format: "esm", target: "node22" });
   writeFileSync(join(temp, "dsh-native-smoke.mjs"), native.code);

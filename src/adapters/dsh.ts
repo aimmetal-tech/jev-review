@@ -2,7 +2,9 @@ import { createHash } from "node:crypto";
 import type { Context } from "@deepseek-ai/cordis";
 import z from "@deepseek-ai/schemastery";
 import type { GenerateOptions, StreamChunk } from "@deepseek-ai/dsh-llm";
-import { readConfig, review, type Config as ReviewConfig, type ReviewState } from "./reviewer.ts";
+import { readConfig, review, type Config as ReviewConfig, type ReviewState } from "../reviewer.ts";
+import { sandboxBoundary } from "../sandbox.ts";
+import { attachDshExecution, type DshExecution } from "./dsh-sandbox.ts";
 
 export const name = "jev-auto-review";
 export const inject = ["llm"];
@@ -19,6 +21,14 @@ export const Config = z.object({
   confidenceThreshold: z.number().min(0.5).max(1).default(0.95),
   timeoutMs: z.natural().min(100).max(60000).default(5000),
   maxStateBytes: z.natural().min(1024).max(131072).default(32768),
+  llmApiKeyEnv:z.string().default("LLM_API_KEY"),
+  llmBaseUrl:z.string(),
+  llmModel:z.string().default("mimo-v2.6-flash"),
+  llmTimeoutMs:z.natural().min(100).max(120000).default(20000),
+  humanAfter:z.natural().min(1).max(10).default(3),
+  sandboxMode:z.union([z.const("off"),z.const("read-only"),z.const("workspace-write")]).default("workspace-write"),
+  sandboxImage:z.string().default("node:22-bookworm-slim"),
+  sandboxTimeoutMs:z.natural().min(100).max(600000).default(60000),
 });
 export type DshConfig = ReturnType<typeof Config>;
 
@@ -83,12 +93,21 @@ function failure(message: string, aborted = false): StreamChunk {
 }
 
 /** Render the exact protocol consumed by dsh's own Auto reviewer. */
-export async function* reviewStream(options: GenerateOptions, config: ReviewConfig, fetcher: typeof fetch = fetch): AsyncIterable<StreamChunk> {
+export async function* reviewStream(options: GenerateOptions, config: ReviewConfig, fetcher: typeof fetch = fetch, execution?:DshExecution): AsyncIterable<StreamChunk> {
   if (options.signal?.aborted) { yield failure("Jev review cancelled", true); return; }
   let state: ReviewState;
   try { state = translateReviewInput(options); }
   catch { yield failure("Unsupported dsh review protocol; Jev did not approve this operation"); return; }
-  const verdict = await review(state, config, fetcher, options.signal);
+  const frame=execution?.frames.getStore();
+  if(frame&&(frame.exec.name!==state.operation.tool||JSON.stringify(frame.exec.arguments)!==JSON.stringify(state.operation.input)||
+      (frame.plan&&frame.plan.operation.cwd!==state.operation.cwd))){yield failure("Auto-review request does not match the pending execution");return;}
+  if(frame)frame.signature=JSON.stringify({userRequests:state.userRequests,parentRequests:state.parentRequests,constraints:state.constraints});
+  const bound=frame?.plan&&frame.exec.name===state.operation.tool&&JSON.stringify(frame.exec.arguments)===JSON.stringify(state.operation.input);
+  if(bound&&frame?.plan)state.sandboxBoundary=sandboxBoundary(frame.plan);
+  const verdict = await review(state, config, fetcher, options.signal,{
+    sandbox:bound&&frame?.plan?{allows:()=>!frame.exec.signal.aborted&&Boolean(execution?.sandbox.canRun(frame.plan!,frame.plan!.operation))}:undefined,
+  });
+  if(frame)frame.verdict=verdict;
   if (options.signal?.aborted) { yield failure("Jev review cancelled", true); return; }
   const text = JSON.stringify(verdict.decision === "allow"
     ? { risk: "low", decision: "allow" }
@@ -106,10 +125,15 @@ export function apply(ctx: Context, config: DshConfig): void {
   const resolved = readConfig({
     TYPESAFE_API_KEY: process.env[config.apiKeyEnv],
     JEV_MODEL: config.model, JEV_MODE: config.mode,
+    // Native snapshots lack the executor identity and session-bound grant required by L1.
+    JEV_L1_MODE: "off",
     JEV_PROBABILITY_THRESHOLD: String(config.probabilityThreshold),
     JEV_CONFIDENCE_THRESHOLD: String(config.confidenceThreshold),
     JEV_TIMEOUT_MS: String(config.timeoutMs), JEV_MAX_STATE_BYTES: String(config.maxStateBytes),
+    LLM_API_KEY:process.env[config.llmApiKeyEnv],LLM_BASE_URL:config.llmBaseUrl??process.env.LLM_BASE_URL,JEV_LLM_MODEL:config.llmModel,JEV_LLM_TIMEOUT_MS:String(config.llmTimeoutMs),
+    JEV_HUMAN_AFTER:String(config.humanAfter),JEV_SANDBOX_MODE:config.sandboxMode,JEV_SANDBOX_IMAGE:config.sandboxImage,JEV_SANDBOX_TIMEOUT_MS:String(config.sandboxTimeoutMs),
   });
+  const execution=attachDshExecution(ctx,resolved);
   const lifecycle = new AbortController();
   const active = new Set<Promise<void>>();
   const logger = ctx.logger("jev-auto-review");
@@ -126,7 +150,7 @@ export function apply(ctx: Context, config: DshConfig): void {
           const verdict = await review(state, resolved, fetch, signal);
           logger.info(`Jev shadow: ${verdict.decision}; ${verdict.reason}`);
         } else {
-          yield* reviewStream({ ...options, signal }, resolved);
+          yield* reviewStream({ ...options, signal }, resolved,fetch,execution);
         }
       } catch {
         yield failure("Jev adapter failed; this operation was not approved", signal.aborted);

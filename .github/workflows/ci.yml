@@ -5,6 +5,16 @@ on:
     branches: [main]
   pull_request:
   workflow_dispatch:
+    inputs:
+      live_models:
+        description: 'Run real Pi/DSH model smoke tests (uses test API credits)'
+        type: boolean
+        default: false
+      live_host:
+        description: 'Select a host when validating a failed host fix'
+        type: choice
+        options: [both, pi, dsh]
+        default: both
 
 permissions:
   contents: read
@@ -32,3 +42,60 @@ jobs:
       - run: npm ci --ignore-scripts
       - run: npm run verify
       - run: npm run check:package
+
+  sandbox:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: 24
+          cache: npm
+      - run: npm ci --ignore-scripts
+      - run: docker pull node:22-bookworm-slim
+      - run: npm test
+        env:
+          JEV_TEST_DOCKER: '1'
+          JEV_TEST_IMAGE: node:22-bookworm-slim
+
+  live-models:
+    if: github.event_name == 'workflow_dispatch' && inputs.live_models && github.repository == 'aimmetal-tech/jev-review' && (github.ref == 'refs/heads/main' || github.ref == 'refs/heads/codex/cloud-live-tests')
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    strategy:
+      fail-fast: false
+      max-parallel: 1
+      matrix:
+        host: ${{ inputs.live_host == 'pi' && fromJSON('["pi"]') || inputs.live_host == 'dsh' && fromJSON('["dsh"]') || fromJSON('["pi","dsh"]') }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: 24
+          cache: npm
+      - run: npm ci --ignore-scripts
+      - run: docker pull node:22-bookworm-slim
+      - run: npm run live:prepare
+      - name: Real models and actual host tools
+        run: npm run test:live -- ${{ matrix.host }}
+        env:
+          LLM_API_KEY: ${{ secrets.LLM_API_KEY }}
+          LLM_BASE_URL: ${{ secrets.LLM_BASE_URL }}
+          TYPESAFE_API_KEY: ${{ secrets.TYPESAFE_API_KEY }}
+      - name: Record preparation failure if no report was produced
+        if: always()
+        run: |
+          node --input-type=module -e 'import fs from "node:fs"; const path=".release/live-model/${{ matrix.host }}"; fs.mkdirSync(path,{recursive:true}); if(!fs.existsSync(path+"/summary.json")) fs.writeFileSync(path+"/summary.json",JSON.stringify({host:"${{ matrix.host }}",commit:process.env.GITHUB_SHA,status:"fail",failure:"preparation_or_runner_failed",cases:[]}));'
+      - name: Upload sanitized evidence
+        if: always()
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9
+        with:
+          name: live-model-${{ matrix.host }}-${{ github.run_id }}-${{ github.run_attempt }}
+          path: .release/live-model/${{ matrix.host }}/
+          retention-days: 7
+          if-no-files-found: warn

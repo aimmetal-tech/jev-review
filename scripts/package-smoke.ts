@@ -19,7 +19,7 @@ const { loadExtensions } = await import(loaderUrl.href);
 const loaded = await loadExtensions([piEntry], process.cwd());
 assert.deepEqual(loaded.errors, []);
 assert.equal(loaded.extensions.length, 1);
-for (const event of ["tool_call", "session_start", "user_bash"]) {
+for (const event of ["tool_call", "session_start", "user_bash", "input", "before_agent_start", "agent_end", "session_before_tree", "session_before_compact"]) {
   assert.ok(loaded.extensions[0].handlers.has(event), event);
 }
 assert.ok(loaded.extensions[0].commands.has("jev"));
